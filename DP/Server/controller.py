@@ -271,7 +271,7 @@ class ZoneThread(threading.Thread):
                 normal_schedule_succeeded, action_data = normal_schedule.normal_schedule()
 
             # TODO if normal schedule fails then real problems
-            if not normal_schedule_succeeded and normal_schedule_succeeded is not None:
+            if normal_schedule_succeeded is not None and not normal_schedule_succeeded:
                 print("WARNING, normal schedule has not succeeded.")
 
             print datetime.datetime.now()
