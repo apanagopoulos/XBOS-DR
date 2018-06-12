@@ -28,7 +28,7 @@ Advise:
     - ['00:00', '13:00', None, None]
     - ['13:00', '16:00', 68.0, 78.0]
     - ['16:00', '00:00', None, None]
-  Baseline_Dr_Extend_Percent: 5.0
+  Baseline_Dr_Extend_Percent: 2.0
   Comfortband:
     0:
     - ['00:00', '13:00', 54.0, 86.0]
