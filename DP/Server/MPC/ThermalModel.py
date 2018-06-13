@@ -9,14 +9,11 @@ from sklearn.base import BaseEstimator, RegressorMixin
 
 # following model also works as a sklearn model.
 class ThermalModel(BaseEstimator, RegressorMixin):
-    def __init__(self, thermal_precision=0.05, learning_rate=0.00001, scoreType=-1, ):
+    def __init__(self, thermal_precision=0.05, learning_rate=0.00001):
         '''
-        _params:
-            scoreType: (int) which actions to filter by when scoring. -1 indicates no filter, 0 no action,
-                        1 heating, 2 cooling.
+        
         :param thermal_precision: the number of decimal points when predicting.
         '''
-        self.scoreType = scoreType  # instance variable because of how cross validation works with sklearn
 
         self._params = None
         self._params_order = None
@@ -31,7 +28,7 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         self.scoreTypeList = []  # to know which action each rmse belongs to.
         self.betterThanBaseline = []
 
-        self.thermalPrecision = thermal_precision
+        self.thermal_precision = thermal_precision
         self.learning_rate = learning_rate  # TODO evaluate which one is best.
 
     # thermal model function
@@ -56,8 +53,10 @@ class ThermalModel(BaseEstimator, RegressorMixin):
 
         return np.array(features) * dt
 
-    def fit(self, X, y=None):
-        """Needs to be called to fit the model. Will set self._params to coefficients. 
+    def fit(self, X, y):
+        # TODO how should it update parameters when given more new data?
+        """Needs to be called to initally fit the model. Will set self._params to coefficients. 
+        Will refit the model if called with new data. 
         :param X: pd.df with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperature where all have 
         to begin with "zone_temperature_" + "zone name"
         :param y: the labels corresponding to the data. As a pd.dataframe
@@ -83,16 +82,17 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         :param X: (pd.df) with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperature where all have 
         to begin with "zone_temperature_" + "zone name
         :param y: (float)"""
-        # NOTE: Using gradient decent $$self.params = self.param - self.learning_rate * 2 * (self._func(X, *params) - y) * features(X)
+        # NOTE: Using gradient decent $$self.params = self.param - self.learning_rate * 2 * (self._func(X, *params) - y) * features(X)$$
         loss = self._func(X[self._filter_columns].T.as_matrix(), *self._params)[0] - y
         adjust = self.learning_rate * loss * self._features(X[self._filter_columns].T.as_matrix())
         self._params = self._params - adjust.reshape(
             (adjust.shape[0]))  # to make it the same dimensions as self._params
 
-    def predict(self, X, y=None, should_round=True):
+    def predict(self, X, should_round=True):
         """Predicts the temperatures for each row in X.
         :param X: pd.df/pd.Series with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperatures where all 
         have to begin with "zone_temperature_" + "zone name"
+        :param should_round: bool. Wether to round the prediction according to self.thermal_precision.
         :return (np.array) entry corresponding to prediction of row in X.
         """
         # only predicts next temperatures
@@ -105,7 +105,7 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         predictions = self._func(X[self._filter_columns].T.as_matrix(), *self._params)
         if should_round:
             # source for rounding: https://stackoverflow.com/questions/2272149/round-to-5-or-other-number-in-python
-            return self.thermalPrecision * np.round(predictions / float(self.thermalPrecision))
+            return self.thermal_precision * np.round(predictions / float(self.thermal_precision))
         else:
             return predictions
 
@@ -123,12 +123,11 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         diff_std = np.sqrt(np.mean(np.square(diff_scaled - mean_error)))
         return mean_error, rmse, diff_std
 
-    def score(self, X, y, scoreType=None):
+    def score(self, X, y, scoreType=-1):
         """Scores the model on the dataset given by X and y."""
-        if scoreType is None:
-            scoreType = self.scoreType
-        assert scoreType in list(range(-1, 4))
 
+        # Filters data to score only on subset of actions.
+        assert scoreType in list(range(-1, 4))
         self.scoreTypeList.append(scoreType)  # filter by the action we want to score by
         if scoreType == 0:
             filter_arr = (X['a1'] == 0) & (X['a2'] == 0)
@@ -136,25 +135,28 @@ class ThermalModel(BaseEstimator, RegressorMixin):
             filter_arr = X['a1'] == 1
         elif scoreType == 2:
             filter_arr = X['a2'] == 1
-        else:
+        elif scoreType == -1:
             filter_arr = np.ones(X['a1'].shape) == 1
-
         X = X[filter_arr]
         y = y[filter_arr]
 
+        # Predict on filtered data
         prediction = self.predict(X)  # only need to predict for relevant actions
 
+        # Get model error
         mean_error, rmse, std = self._normalizedRMSE_STD(prediction, y, X['dt'])
-
-        # add model RMSE for reference.
         self.model_error.append({"mean": mean_error, "rmse": rmse, "std": std})
 
-        # add trivial error for reference.
+        # add trivial error for reference. Trivial error assumes that the temperature in X["dt"] time will be the same
+        # as the one at the start of interval.
         trivial_mean_error, trivial_rmse, trivial_std = self._normalizedRMSE_STD(X['t_in'], y, X['dt'])
         self.baseline_error.append({"mean": trivial_mean_error, "rmse": trivial_rmse, "std": trivial_std})
 
         # to keep track of whether we are better than the baseline/trivial
         self.betterThanBaseline.append(trivial_rmse > rmse)
+
+        # To know which actions we scored on
+        self.scoreTypeList.append(scoreType)
 
         return rmse
 
@@ -196,7 +198,7 @@ class MPCThermalModel(ThermalModel):
 
     def _datapoint_to_dataframe(self, interval, action, t_out, zone_temperatures):
         """A helper function that converts a datapoint to a pd.df used for predictions.
-        Assumes that we have self.zoneTemperatures and self.zone"""
+        Assumes that we have self.zone"""
         X = {"dt": interval, "a1": int(0 < action <= 1), "a2": int(1 < action <= 2),
              "t_out": t_out}
         for key_zone, val in zone_temperatures.items():
@@ -211,7 +213,7 @@ class MPCThermalModel(ThermalModel):
         """
         performs one update step for the thermal model and
         stores curr temperature for every zone. Call whenever we are starting new interval.
-        :param zone_temps: {zone: temperature}
+        :param curr_zone_temperatures: {zone: temperature}
         :param interval: The delta time since the last action was called. 
         :param now: the current time in the timezone as weather_predictions.
         :return: None

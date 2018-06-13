@@ -60,10 +60,11 @@ Advise:
     - ['16:00', '00:00', 54.0, 86.0]
   Cooling_Consumption: 2.75
   Cooling_Consumption_Stage_2: 2.75
-  DR_Lambda: 0.995
+  DR_Lambda: 0.7
   General_Lambda: 0.995
   Heating_Consumption: 0.075
   Hysterisis: 1.0
+  Lambda: 0.7
   MPC: false
   MPCPredictiveHorizon: 4
   Max_Actions: 400

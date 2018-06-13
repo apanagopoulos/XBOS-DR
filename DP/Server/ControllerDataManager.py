@@ -41,12 +41,11 @@ class ControllerDataManager:
         :param end: (datetime) time to end. relative to datamanager instance timezone.
         :return outside temperature has freq of 15 min and
         pd.df columns["tin", "a"] has freq of self.window_size. """
-
+        # TODO, why do we have this ?
         if end is None:
             end = self.now
         if start is None:
             start = end - timedelta(hours=10)
-
 
         # Converting start and end from datamanger timezone to UTC timezone.
         start = start.astimezone(pytz.timezone("UTC"))
@@ -163,11 +162,11 @@ class ControllerDataManager:
         for zone, dict in thermostat_query_data.items():
             # get the thermostat data
             dfs = mdal_client.do_query({'Composition': [dict["tstat_temperature"], dict["tstat_action"]],
-                              'Selectors': [mdal.MEAN, mdal.MAX]
-                                 , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                            'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                            'WindowSize': str(self.window_size) + 'min',
-                                            'Aligned': True}})
+                                        'Selectors': [mdal.MEAN, mdal.MAX]
+                                           , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                                      'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                                      'WindowSize': str(self.window_size) + 'min',
+                                                      'Aligned': True}})
             df = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
 
             zone_thermal_data[zone] = df.rename(columns={dict["tstat_temperature"]: 't_in', dict["tstat_action"]: 'a'})
@@ -235,11 +234,13 @@ class ControllerDataManager:
             thermal_model_data['a'] = thermal_model_data.apply(f3, axis=1)
 
             # Assumption:
-            # Outside temperature will have nan values because it does not have same frequency as zone data.
+            # The dataframe will have nan values because outside_temperature does not have same frequency as zone_data.
             # Hence, we fill with last known value to assume a constant temperature throughout intervals.
             thermal_model_data["t_out"] = thermal_model_data["t_out"].fillna(method="pad")
 
-            # prepares final data type.
+            # From here on preprocessing data. Concatinating all time contigious datapoints which have the same action.
+
+            # Finding all points where action changed.
             thermal_model_data['change_of_action'] = (thermal_model_data['a'].diff(1) != 0).astype(
                 'int').cumsum()  # given a row it's the number of times we have had an action change up till then. e.g. from nothing to heating.
             # This is accomplished by taking the difference of two consecutive rows and checking if their difference is 0 meaning that they had the same action.
@@ -257,7 +258,7 @@ class ControllerDataManager:
                         temp_data_dict = {'time': dfs.index[0],
                                           't_in': dfs['t_in'][0],
                                           't_next': dfs['t_in'][-1],
-                                          # need to add windowsize for last timestep.
+                                          # needed to add windowsize for last timestep.
                                           'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60 + self.window_size,
                                           't_out': dfs['t_out'].mean(),  # mean does not count Nan values
                                           'action': dfs['a'][0]}
@@ -314,7 +315,6 @@ if __name__ == '__main__':
     #     pickle.dump(z, f)
     # print(z)
     import pickle
-
 
     with open("Buildings/avenal-recreation-center/avenal-recreation-center.yml") as f:
         cfg = yaml.load(f)
