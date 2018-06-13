@@ -263,6 +263,8 @@ class MPCThermalModel(ThermalModel):
             assert time != -1
             assert self.weatherPredictions is not None
             t_out = self.weatherPredictions[time]
+        else:
+            t_out = outside_temperature
 
         # TODO NEED TO FIX THIS
         zone_temps = self.zoneTemperatures
