@@ -275,6 +275,7 @@ class ZoneThread(threading.Thread):
                 print("WARNING, normal schedule has not succeeded.")
 
             print datetime.datetime.now()
+            print(cfg["Building"]) # TODO Rethink. now every thread will write this.
             # Wait for the next interval.
             time.sleep(60. * float(cfg["Interval_Length"]) - (
             (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
