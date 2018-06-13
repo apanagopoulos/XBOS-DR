@@ -52,7 +52,7 @@ Advise:
     - ['00:00', '00:00', 54.0, 86.0]
   Cooling_Consumption: 5.5
   DR_Lambda: 0.7
-  General_Lambda: 0.995
+  General_Lambda: 0.7
   Heating_Consumption: 0.075
   Hysterisis: 1.0
   Lambda: 0.7
