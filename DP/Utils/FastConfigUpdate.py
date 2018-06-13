@@ -14,6 +14,9 @@ for d in all_dir[1]:
     files = os.walk(end_dir).next()[2]
     print("in dir: ", end_dir)
     for f in files:
+        if ".yml" not in f:
+            print("%s is not a yaml file. Continue to next file." % f)
+            continue
         print("In zone %s" % f)
         # Loads the configs
         with open("./" + end_dir + "/" + f, 'r') as o:
