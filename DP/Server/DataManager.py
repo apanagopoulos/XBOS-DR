@@ -47,7 +47,7 @@ class DataManager:
         :param zone: 
         :param now: in UTC time. If None (so no now is passed), take the current time. 
         """
-
+        # TODO maybe get self.zone from config file.
         self.controller_cfg = controller_cfg
         self.advise_cfg = advise_cfg
         self.pytz_timezone = controller_cfg["Pytz_Timezone"]
@@ -301,8 +301,8 @@ class DataManager:
 
 
 if __name__ == '__main__':
-
-    with open("config_file.yml", 'r') as ymlfile:
+    # Test for ciee
+    with open("Buildings/ciee/ciee.yml", 'r') as ymlfile:
         cfg = yaml.load(ymlfile)
 
     with open("Buildings/" + cfg["Building"] + "/ZoneConfigs/HVAC_Zone_Centralzone.yml", 'r') as ymlfile:
@@ -316,9 +316,9 @@ if __name__ == '__main__':
     dm = DataManager(cfg, advise_cfg, c, "HVAC_Zone_Centralzone")
 
     print "Weather Predictions:"
-    print dm.weather_fetch()
+    # print dm.weather_fetch()
     # print "Occupancy Data"
-    # print dm.preprocess_occ()
+    print dm.preprocess_occ()
     # print "Thermostat Setpoints:"
     # print dm.thermostat_setpoints()
     # print "Prices:"

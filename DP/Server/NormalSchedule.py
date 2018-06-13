@@ -93,7 +93,7 @@ class NormalSchedule:
                 if i == self.advise_cfg["Advise"]["Thermostat_Write_Tries"] - 1:
                     e = sys.exc_info()[0]
                     print e
-                    return False, p
+                    return False, None
                 continue
         return True, p
 

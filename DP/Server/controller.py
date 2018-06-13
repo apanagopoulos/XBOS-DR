@@ -271,7 +271,7 @@ class ZoneThread(threading.Thread):
                 normal_schedule_succeeded, action_data = normal_schedule.normal_schedule()
 
             # TODO if normal schedule fails then real problems
-            if not normal_schedule_succeeded and normal_schedule_succeeded is not None:
+            if normal_schedule_succeeded is not None and not normal_schedule_succeeded:
                 print("WARNING, normal schedule has not succeeded.")
 
             print datetime.datetime.now()
@@ -286,6 +286,8 @@ class ZoneThread(threading.Thread):
 
 
 if __name__ == '__main__':
+    # TODO check for comfortband height and whether correctly implemented
+
     # read from config file
     try:
         yaml_filename = "Buildings/%s/%s.yml" % (sys.argv[1], sys.argv[1])
