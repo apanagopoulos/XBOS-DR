@@ -217,7 +217,7 @@ def has_setpoint_changed(tstat, setpoint_data, zone):
         print(WARNING_MSG % ("cooling setpoint", zone, tstat.cooling_setpoint, setpoint_data["cooling_setpoint"]))
     if tstat.heating_setpoint != setpoint_data["heating_setpoint"]:
         flag_changed = True
-        print(WARNING_MSG % ("heating setpoint", zone, tstat.cooling_setpoint, setpoint_data["cooling_setpoint"]))
+        print(WARNING_MSG % ("heating setpoint", zone, tstat.heating_setpoint, setpoint_data["heating_setpoint"]))
 
     # write override false so the local schedules can take over again.
     if flag_changed:
