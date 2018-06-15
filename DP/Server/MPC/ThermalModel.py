@@ -8,6 +8,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 
 
 # following model also works as a sklearn model.
+# TODO rename a1 and a2 to heating and cooling action. otherwise gets confusing when we get into 2 stage.
 class ThermalModel(BaseEstimator, RegressorMixin):
     def __init__(self, thermal_precision=0.05, learning_rate=0.00001):
         '''
@@ -128,7 +129,7 @@ class ThermalModel(BaseEstimator, RegressorMixin):
 
         # Filters data to score only on subset of actions.
         assert scoreType in list(range(-1, 4))
-        self.scoreTypeList.append(scoreType)  # filter by the action we want to score by
+       # filter by the action we want to score by
         if scoreType == 0:
             filter_arr = (X['a1'] == 0) & (X['a2'] == 0)
         elif scoreType == 1:

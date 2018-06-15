@@ -1,23 +1,24 @@
-Pytz_Timezone: "America/Los_Angeles"
-Building : "avenal-movie-theatre"
-Entity_File: "./thanos.ent"
-Agent_IP: '172.17.0.1:28589'
-Server : True
-Coordinates: "36.0034146,-120.1337352"
-
-# for thermal model
-Max_Actions: 400 #int
-Thermal_Precision: 0.05 #float
-Interval_Length: 15 # min
-
-
-Pricing:
-  #First sublist is weekday, second list is weekend
-  Energy_Rates: "TOU-Summer" # options are "Server", "NON-TOU-Summer", "NON-TOU-Winter", "TOU-Summer", "TOU-Winter"
-  Holiday: False
-  DR : True
-  DR_Start: "14:00"
-  DR_Finish: "18:00"
-  DR_Price: 1.20
-  TOU-Summer: [[["00:00", "08:30", 0.08671],["08:30", "12:00", 0.11613],["12:00", "18:00", 0.16055],["18:00", "21:30", 0.11613],["21:30", "00:00", 0.08671]], [["00:00","00:00", 0.08671]]]
-  TOU-Winter: [[["00:00", "08:30", 0.09401],["08:30", "21:30", 0.11004],["21:30", "00:00", 0.09401]], [["00:00","00:00", 0.09401]]]
+Agent_IP: 172.17.0.1:28589
+Building: avenal-movie-theatre
+Coordinates: 36.0034146,-120.1337352
+Entity_File: ./thanos.ent
+Interval_Length: 15
+Max_Actions: 400
+Pricing: {DR: true, DR_Finish: '18:00', DR_Start: '14:00', Energy_Rates: TOU-Summer,
+  Holiday: false}
+Pytz_Timezone: America/Los_Angeles
+Server: true
+Thermal_Precision: 0.05
+"\_ DR_Price": 1.2
+"\_ TOU-Summer":
+- - ['00:00', '08:30', 0.08671]
+  - ['08:30', '12:00', 0.11613]
+  - ['12:00', '18:00', 0.16055]
+  - ['18:00', '21:30', 0.11613]
+  - ['21:30', '00:00', 0.08671]
+- - ['00:00', '00:00', 0.08671]
+"\_ TOU-Winter":
+- - ['00:00', '08:30', 0.09401]
+  - ['08:30', '21:30', 0.11004]
+  - ['21:30', '00:00', 0.09401]
+- - ['00:00', '00:00', 0.09401]

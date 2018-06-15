@@ -1,27 +1,34 @@
-Pytz_Timezone: "America/Los_Angeles"
-Building : "ciee"
-Entity_File: "thanos.ent"
-Agent_IP: '172.17.0.1:28589'
-Server : True
-Coordinates: "37.8751,-122.2761"
-
-# TODO Daniel added this
-Building: "ciee"
-# for thermal model
-Max_Actions: 400 #int
-Thermal_Precision: 0.05 #float
-Interval_Length: 15 # min
-
-
+Agent_IP: 172.17.0.1:28589
+Building: ciee
+Coordinates: 37.8751,-122.2761
+Entity_File: thanos.ent
+Interval_Length: 15
+Max_Actions: 400
 Pricing:
-  #First sublist is weekday, second list is weekend
-  Energy_Rates: "TOU-Summer" # options are "Server", "NON-TOU-Summer", "NON-TOU-Winter", "TOU-Summer", "TOU-Winter"
-  Holiday: False
-  DR : True
-  DR_Start: "14:00"
-  DR_Finish: "18:00"
-  DR_Price: 0.60
-  NON-TOU-Summer: [[["00:00", "00:00", 0.25]], [["00:00", "00:00", 0.25]]]
-  NON-TOU-Winter: [[["00:00", "00:00", 0.19]], [["00:00", "00:00", 0.19]]]
-  TOU-Summer: [[["00:00", "08:30", 0.21],["08:30", "12:00", 0.24],["12:00", "18:00", 0.26],["18:00", "21:30", 0.24],["21:30", "00:00", 0.21]], [["00:00","00:00",0.21]]]
-  TOU-Winter: [[["00:00", "08:30", 0.20],["08:30", "21:30", 0.22],["21:30", "00:00", 0.20]], [["00:00","00:00",0.20]]]
+  DR: true
+  DR_Finish: '18:00'
+  DR_Price: 0.6
+  DR_Start: '14:00'
+  Energy_Rates: TOU-Summer
+  Holiday: false
+  NON-TOU-Summer:
+  - - ['00:00', '00:00', 0.25]
+  - - ['00:00', '00:00', 0.25]
+  NON-TOU-Winter:
+  - - ['00:00', '00:00', 0.19]
+  - - ['00:00', '00:00', 0.19]
+  TOU-Summer:
+  - - ['00:00', '08:30', 0.21]
+    - ['08:30', '12:00', 0.24]
+    - ['12:00', '18:00', 0.26]
+    - ['18:00', '21:30', 0.24]
+    - ['21:30', '00:00', 0.21]
+  - - ['00:00', '00:00', 0.21]
+  TOU-Winter:
+  - - ['00:00', '08:30', 0.2]
+    - ['08:30', '21:30', 0.22]
+    - ['21:30', '00:00', 0.2]
+  - - ['00:00', '00:00', 0.2]
+Pytz_Timezone: America/Los_Angeles
+Server: true
+Thermal_Precision: 0.05

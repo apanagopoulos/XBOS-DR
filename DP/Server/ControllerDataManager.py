@@ -18,15 +18,21 @@ class ControllerDataManager:
     """
     # Class that handles all the data fetching and some of the preprocess for data that is relevant to controller
     and which does not have to be fetched every 15 min but only once. 
+    
+    Time is always in UTC
     """
 
     def __init__(self, controller_cfg, client,
-                 now=datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC"))):
+                 now=None):
 
         self.controller_cfg = controller_cfg
         self.pytz_timezone = pytz.timezone(controller_cfg["Pytz_Timezone"])
         self.interval = controller_cfg["Interval_Length"]
-        self.now = now.astimezone(self.pytz_timezone)
+
+
+        if now is None:
+            now = datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC"))
+        self.now = now
 
         self.client = client
 
@@ -37,19 +43,16 @@ class ControllerDataManager:
     def _get_outside_data(self, start=None, end=None):
         # TODO update docstring
         """Get outside temperature for thermal model.
-        :param start: (datetime) time to start. relative to datamanager instance timezone.
-        :param end: (datetime) time to end. relative to datamanager instance timezone.
+        :param start: (datetime) time to start. in UTC time.
+        :param end: (datetime) time to end. in UTC time.
         :return outside temperature has freq of 15 min and
         pd.df columns["tin", "a"] has freq of self.window_size. """
-        # TODO, why do we have this ?
+        # TODO, why do we have this. Should only be for get datetime method ?
         if end is None:
             end = self.now
         if start is None:
             start = end - timedelta(hours=10)
 
-        # Converting start and end from datamanger timezone to UTC timezone.
-        start = start.astimezone(pytz.timezone("UTC"))
-        end = end.astimezone(pytz.timezone("UTC"))
 
         outside_temperature_query = """SELECT ?weather_station ?uuid FROM %s WHERE {
                                     ?weather_station rdf:type brick:Weather_Temperature_Sensor.
@@ -80,14 +83,11 @@ class ControllerDataManager:
 
     def _get_inside_data(self, start, end):
         """Get thermostat status and temperature and outside temperature for thermal model.
-        :param start: (datetime) time to start. relative to datamanager instance timezone.
-        :param end: (datetime) time to end. relative to datamanager instance timezone.
+        :param start: (datetime) time to start. in UTC time.
+        :param end: (datetime) time to end. in UTC time.
         :return outside temperature has freq of 15 min and
                     pd.df columns["tin", "a"] has freq of self.window_size. """
 
-        # Converting start and end from datamanger timezone to UTC timezone.
-        start = start.astimezone(pytz.timezone("UTC"))
-        end = end.astimezone(pytz.timezone("UTC"))
 
         # following queries are for the whole building.
         thermostat_status_query = """SELECT ?zone ?uuid FROM %s WHERE { 
@@ -179,7 +179,7 @@ class ControllerDataManager:
         :param zone_data: dict{zone: pd.df columns["tin", "a"]}
         :param outside_data: pd.df columns["tout"]. 
         NOTE: outside_data freq has to be a multiple of zone_data frequency and has to have a higher freq.
-    
+
         :returns {zone: pd.df columns: t_in', 't_next', 'dt','t_out', 'action', 'a1', 'a2', [other mean zone temperatures]}
                  where t_out and zone temperatures are the mean values over the intervals. 
                  a1 is whether heating and a2 whether cooling."""
@@ -228,7 +228,6 @@ class ControllerDataManager:
             # Putting together outside and zone data.
             actions = zone_data[zone]["a"]
             thermal_model_data = pd.concat([all_temperatures, actions, outside_data],
-
                                            axis=1)  # should be copied data according to documentation
             thermal_model_data = thermal_model_data.rename(columns={"zone_temperature_" + zone: "t_in"})
             thermal_model_data['a'] = thermal_model_data.apply(f3, axis=1)
@@ -247,6 +246,9 @@ class ControllerDataManager:
 
             # following adds the fields "time", "dt" etc such that we accumulate all values where we have consecutively the same action.
             # maximally we group terms of total self.interval
+
+            # NOTE: Only dropping nan value during gathering stage and after that. Before then not doing it because
+            # we want to keep the times contigious
             data_list = []
             for j in thermal_model_data.change_of_action.unique():
                 for i in range(0, thermal_model_data[thermal_model_data['change_of_action'] == j].shape[0],
@@ -281,8 +283,8 @@ class ControllerDataManager:
 
     def thermal_data(self, start=None, end=None, days_back=60):
         """
-        :param start: In timezone of datamanger
-        :param end: in timezone of datamanger
+        :param start: In UTC time.
+        :param end: In UTC time.
         :param if start is None, then we set start to end - timedelta(days=days_back). 
         :return: pd.df {zone: pd.df columns: t_in', 't_next', 'dt','t_out', 'action', 'a1', 'a2', [other mean zone temperatures]}
                  where t_out and zone temperatures are the mean values over the intervals. 
@@ -319,17 +321,19 @@ if __name__ == '__main__':
     with open("Buildings/avenal-recreation-center/avenal-recreation-center.yml") as f:
         cfg = yaml.load(f)
 
-    if cfg["Server"]:
-        c = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
-    else:
-        c = get_client()
+    # if cfg["Server"]:
+    #     c = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
+    # else:
+    c = get_client()
+
+    now = datetime.datetime(year=2018, month=06, day=01).replace(tzinfo=pytz.timezone("UTC"))
 
     dataManager = ControllerDataManager(cfg, c)
 
-    utc_zone = pytz.timezone("UTC")
-    o = dataManager._get_outside_data()
 
-    print(o)
+    t = dataManager.thermal_data(days_back=20)
+
+    print(t)
 
     # # plots the data here .
     # import matplotlib.pyplot as plt
@@ -339,3 +343,16 @@ if __name__ == '__main__':
     # zone_file = open("test_" + dm.building, 'wb')
     # pickle.dump(z, zone_file)
     # zone_file.close()
+
+    # How we drop nan should be better documented in this code.
+
+    # Fix the outside weather getter to get good data. Might affect our predictions.
+
+    # Look more carefully at data to see if we are learning weird stuff. In thermal model implement bias for the zones. This is important
+    # because if two zones have the same temperature, but they differ in readings by 5 degrees, then there is no coefficient which can
+    # make the temperature delta zero when they are actually same.
+
+    # Update to make the timezone more friendly. for now everything in UTC time.
+
+    # TODO self.now is misleading. Will only look at when the datamanger was created. Should be updated?
+
