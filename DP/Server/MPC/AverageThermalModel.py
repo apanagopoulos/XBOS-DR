@@ -31,77 +31,35 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         self.thermal_precision = thermal_precision
         self.learning_rate = learning_rate  # TODO evaluate which one is best.
 
-
-
-
-
-    # ========== following are function methods for predicting.
-
-    #  $$T_{in} + dt * ( a_1*c1 + a_2*c2 + (T_{out} - T_{in})*c_3 + c_4 + \sum_{i = 0}^N (T_{zone_i} - T_{in}) * c_{5+i}$$
-    # def _features(self, X):
-    #     """Returns the features we are using as a matrix.
-    #     :param X: A matrix with row order (Tin, a1, a2, Tout, dt, rest of zone temperatures)
-    #     :return np.matrix. each row corresponding to a featurized sample in the order of self._param_order"""
-    #     # TODO the order is hardcoded right now.
-    #     Tin, a1, a2, Tout, dt, zone_temperatures = X[0], X[1], X[2], X[3], X[4], X[5:]
-    #     features = [a1, a2, Tout - Tin, np.ones(X.shape[1])] # last entry is for bias
-    #     for zone_temp in zone_temperatures:
-    #         features.append(zone_temp - Tin)
-    #
-    #     return (np.array(features) * dt).T
-
-    #  $$T_{in} + dt * (T_{in}*a_1*c1 + T_{in}*a_2*c2 + (T_{out} - T_{in})*c_3 + c_4 + \sum_{i = 0}^N (T_{zone_i} - T_{in}) * c_{5+i}$$
-    def _features(self, X):
-        """Returns the features we are using as a matrix.
-        :param X: A matrix with row order (Tin, a1, a2, Tout, dt, rest of zone temperatures)
-        :return np.matrix. each row corresponding to a featurized sample in the order of self._param_order"""
-        # TODO the order is hardcoded right now.
-        # TODO X.shape[1] relies on it being a 2d array.
-        # TODO expects numpy array.
-        Tin, a1, a2, Tout, dt, zone_temperatures = X[0], X[1], X[2], X[3], X[4], X[5:]
-        features = [a1*Tin, a2*Tin, Tout - Tin, np.ones(X.shape[1])] # last entry is for bias
-        for zone_temp in zone_temperatures:
-            features.append(zone_temp - Tin)
-
-        return (np.array(features) * dt).T
-
+    # ========== average learning ========
+    # just learning the average of each action and predict with that.
     # thermal model function
     def _func(self, X, *coeff):
         """The polynomial with which we model the thermal model.
         :param X: np.array with row order (Tin, a1, a2, Tout, dt, rest of zone temperatures)
-        :param *coeff: the coefficients for the thermal model. Should be in order: a1, a2, (Tout - Tin),
-         bias, zones coeffs (as given by self._params_order)
+        :param *coeff: the averages for the thermal model. Should have no_action, heating, cooling as order.
         """
-        features = self._features(X)
-        Tin = X[0]
-        return Tin + features.dot(np.array(coeff))
+        X = X.T # making each data point a row
+        a0_delta, a1_delta, a2_delta = coeff
+        # action idx
+        Tin = 0
+        a1 = 1
+        a2 = 2
+        dt = 4
 
-    # def fit(self, X, y):
-    #     # TODO how should it update parameters when given more new data?
-    #     """Needs to be called to initally fit the model. Will set self._params to coefficients.
-    #     Will refit the model if called with new data.
-    #     :param X: pd.df with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperature where all have
-    #     to begin with "zone_temperature_" + "zone name"
-    #     :param y: the labels corresponding to the data. As a pd.dataframe
-    #     :return self
-    #     """
-    #     zone_col = X.columns[["zone_temperature_" in col for col in X.columns]]
-    #     filter_columns = ['t_in', 'a1', 'a2', 't_out', 'dt'] + list(zone_col)
-    #
-    #     # give mapping from params to coefficients and to store the order in which we get the columns.
-    #     self._filter_columns = filter_columns
-    #     self._params_order = ["a1", 'a2', 't_out', 'bias'] + list(zone_col)
-    #
-    #     # fit the data. we start our guess with all ones for coefficients.
-    #     # Need to do so to be able to generalize to variable number of zones.
-    #     popt, pcov = curve_fit(self._func, X[filter_columns].T.as_matrix(), y.as_matrix(),
-    #                            p0=np.ones(len(
-    #                                self._params_order)))
-    #     self._params = np.array(popt)
-    #     return self
+        t_next = []
+        for i in range(X.shape[0]):
+            data_point = X[i]
+            if data_point[a1] == 1:
+                t_next.append(data_point[Tin] + a1_delta*data_point[dt])
+            elif data_point[a2] == 1:
+                t_next.append(data_point[Tin] + a2_delta*data_point[dt])
+            else:
+                t_next.append(data_point[Tin] + a0_delta*data_point[dt])
+
+        return np.array(t_next)
 
     # Fit without zone interlocking.
-    # TODO train by cutting out small dt's.
     def fit(self, X, y):
         # TODO how should it update parameters when given more new data?
         """Needs to be called to initally fit the model. Will set self._params to coefficients.
@@ -112,22 +70,32 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         :return self
         """
         zone_col = X.columns[["zone_temperature_" in col for col in X.columns]]
+
         filter_columns = ['t_in', 'a1', 'a2', 't_out', 'dt'] + list(zone_col)
 
         # give mapping from params to coefficients and to store the order in which we get the columns.
         self._filter_columns = filter_columns
-        self._params_order = ["a1", 'a2', 't_out', 'bias'] + list(zone_col)
 
-        # fit the data. we start our guess with all ones for coefficients.
-        # Need to do so to be able to generalize to variable number of zones.
-        popt, pcov = curve_fit(self._func, X[filter_columns].T.values, y.values,
-                               p0=np.ones(len(
-                                   self._params_order)))
 
-        self._params = np.array(popt)
+        def get_delta_mean(action_data):
+            # get the mean change of temperature from now to next. Normalized
+            # TODO assuming action_data has "t_next"
+            # TODO assuming that mean will be a float
+            return np.mean((action_data["t_next"] - action_data["t_in"])/action_data["dt"])
+
+        cooling_data = X[X["a2"] == 1]
+        heating_data = X[X["a1"] == 1]
+        no_action_data = X[(X["a1"] == 0) & (X["a2"] == 0)]
+
+        mean_cooling_delta = get_delta_mean(cooling_data)
+        mean_heating_delta = get_delta_mean(heating_data)
+        mean_no_action_delta = get_delta_mean(no_action_data)
+        self._params = [mean_no_action_delta, mean_heating_delta, mean_cooling_delta]
+
         return self
 
-    # ===== Function fit methods end. ====
+    # ==== average model ends. ======
+
 
     def updateFit(self, X, y):
         """Adaptive Learning for one datapoint. The data given will all be given the same weight when learning.
@@ -163,17 +131,11 @@ class ThermalModel(BaseEstimator, RegressorMixin):
 
     def _normalizedRMSE_STD(self, prediction, y, dt):
         '''Computes the RMSE with scaled differences to normalize to 15 min intervals.
-        NOTE: Use method if you already have predictions.
-        :param prediction: (np.array) list of predictions.
-        :param y: (np.array) list of expected values.
-        :param dt: (np.array) list of dt for each prediction. (i.e. time between t_in and t_next)
-        :return: mean_error (mean of prediction - y), rmse, std (std of the error). All data properly normalized to 15 min
-        intervals.'''
+        NOTE: Use method if you already have predictions.'''
         diff = prediction - y
 
         # to offset for actions which were less than 15 min. Normalizes to 15 min intervals.
         # TODO maybe make variable standard intervals.
-        # TODO Maybe no scales.
         diff_scaled = diff * 15. / dt
         mean_error = np.mean(diff_scaled)
         # root mean square error

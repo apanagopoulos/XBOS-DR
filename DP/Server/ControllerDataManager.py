@@ -230,11 +230,12 @@ class ControllerDataManager:
             thermal_model_data = pd.concat([all_temperatures, actions, outside_data],
                                            axis=1)  # should be copied data according to documentation
             thermal_model_data = thermal_model_data.rename(columns={"zone_temperature_" + zone: "t_in"})
-            thermal_model_data['a'] = thermal_model_data.apply(f3, axis=1)
+            thermal_model_data['a'] = thermal_model_data.apply(f3, axis=1)  # TODO if we get 0.5 the heating happend for half the time.
 
             # Assumption:
             # The dataframe will have nan values because outside_temperature does not have same frequency as zone_data.
             # Hence, we fill with last known value to assume a constant temperature throughout intervals.
+            # TODO interpolate the temperatures (also for forecasting reports).
             thermal_model_data["t_out"] = thermal_model_data["t_out"].fillna(method="pad")
 
             # From here on preprocessing data. Concatinating all time contigious datapoints which have the same action.
@@ -261,9 +262,10 @@ class ControllerDataManager:
                                           't_in': dfs['t_in'][0],
                                           't_next': dfs['t_in'][-1],
                                           # needed to add windowsize for last timestep.
+                                          # TODO check dt if correct.
                                           'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60 + self.window_size,
                                           't_out': dfs['t_out'].mean(),  # mean does not count Nan values
-                                          'action': dfs['a'][0]}
+                                          'action': dfs['a'][0]} # TODO document why we expect no nan in a block.
 
                         for temperature_zone in dfs.columns[zone_col_filter]:
                             # mean does not count Nan values
@@ -331,9 +333,13 @@ if __name__ == '__main__':
     dataManager = ControllerDataManager(cfg, c)
 
 
-    t = dataManager.thermal_data(days_back=20)
+    o = dataManager._get_outside_data(now-datetime.timedelta(days=20), now)
+    o.dropna()
+    print("shape of outside data", o.shape)
+    print("number of 32 temperatures", (o["t_out"] == 32).sum())
+    # t = dataManager.thermal_data(days_back=20)
 
-    print(t)
+    # print(t)
 
     # # plots the data here .
     # import matplotlib.pyplot as plt
