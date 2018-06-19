@@ -1,0 +1,44 @@
+Evaluations:
+  ActionOrder:
+    - -1
+    - 0
+    - 1
+    - 2
+  Baseline:
+    - mean: -0.00018806033970078642
+      rmse: 0.20692822387575543
+      std: 0.2069281384193155
+    - mean: -0.00018806033970078642
+      rmse: 0.20692822387575543
+      std: 0.2069281384193155
+    - mean: .nan
+      rmse: .nan
+      std: .nan
+    - mean: .nan
+      rmse: .nan
+      std: .nan
+  'Better Than Baseline':
+    - true
+    - true
+    - false
+    - false
+  Corresponding_Days:
+    - 45
+  Model:
+    - mean: -5.20281453498377e-15
+      rmse: 0.20692813841931548
+      std: 0.2069281384193155
+    - mean: -5.20281453498377e-15
+      rmse: 0.20692813841931548
+      std: 0.2069281384193155
+    - mean: .nan
+      rmse: .nan
+      std: .nan
+    - mean: .nan
+      rmse: .nan
+      std: .nan
+'Param Order':
+Params:
+  - 0.00018806033970078642
+  - .nan
+  - .nan
