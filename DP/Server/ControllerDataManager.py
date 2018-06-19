@@ -297,6 +297,7 @@ class ControllerDataManager:
         if start is None:
             start = end - timedelta(days=days_back)
         z, o = self._get_inside_data(start, end), self._get_outside_data(start, end)
+        print("Received Thermal Data from MDAL.")
         return self._preprocess_thermal_data(z, o)
 
 

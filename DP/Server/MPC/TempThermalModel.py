@@ -9,7 +9,8 @@ from sklearn.base import BaseEstimator, RegressorMixin
 
 # used to find best thermal model.
 class ThermalModel(BaseEstimator, RegressorMixin):
-    def __init__(self, thermal_precision=0.05, learning_rate=0.00001):
+    # Document the class and init variables.
+    def __init__(self, thermal_precision=0.05, learning_rate=0.00001, cross_eval=False):
         '''
 
         :param thermal_precision: the number of decimal points when predicting.
@@ -23,6 +24,13 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         #  Also, change in score, e.g. self.model_error to ThermalModel.model_error
         # keeping track of all the rmse's computed with this class.
         # first four values are always the training data errors.
+        self._cross_eval = cross_eval
+        # if cross_eval:
+        #     ThermalModel.baseline_error = []
+        #     ThermalModel.model_error = []
+        #     ThermalModel.scoreTypeList = []  # to know which action each rmse belongs to.
+        #     ThermalModel.betterThanBaseline = []
+
         self.baseline_error = []
         self.model_error = []
         self.scoreTypeList = []  # to know which action each rmse belongs to.
@@ -32,23 +40,8 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         self.learning_rate = learning_rate  # TODO evaluate which one is best.
 
 
-
-
-
     # ========== following are function methods for predicting.
 
-    #  $$T_{in} + dt * ( a_1*c1 + a_2*c2 + (T_{out} - T_{in})*c_3 + c_4 + \sum_{i = 0}^N (T_{zone_i} - T_{in}) * c_{5+i}$$
-    # def _features(self, X):
-    #     """Returns the features we are using as a matrix.
-    #     :param X: A matrix with row order (Tin, a1, a2, Tout, dt, rest of zone temperatures)
-    #     :return np.matrix. each row corresponding to a featurized sample in the order of self._param_order"""
-    #     # TODO the order is hardcoded right now.
-    #     Tin, a1, a2, Tout, dt, zone_temperatures = X[0], X[1], X[2], X[3], X[4], X[5:]
-    #     features = [a1, a2, Tout - Tin, np.ones(X.shape[1])] # last entry is for bias
-    #     for zone_temp in zone_temperatures:
-    #         features.append(zone_temp - Tin)
-    #
-    #     return (np.array(features) * dt).T
 
     #  $$T_{in} + dt * (T_{in}*a_1*c1 + T_{in}*a_2*c2 + (T_{out} - T_{in})*c_3 + c_4 + \sum_{i = 0}^N (T_{zone_i} - T_{in}) * c_{5+i}$$
     def _features(self, X):
@@ -76,29 +69,6 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         Tin = X[0]
         return Tin + features.dot(np.array(coeff))
 
-    # def fit(self, X, y):
-    #     # TODO how should it update parameters when given more new data?
-    #     """Needs to be called to initally fit the model. Will set self._params to coefficients.
-    #     Will refit the model if called with new data.
-    #     :param X: pd.df with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperature where all have
-    #     to begin with "zone_temperature_" + "zone name"
-    #     :param y: the labels corresponding to the data. As a pd.dataframe
-    #     :return self
-    #     """
-    #     zone_col = X.columns[["zone_temperature_" in col for col in X.columns]]
-    #     filter_columns = ['t_in', 'a1', 'a2', 't_out', 'dt'] + list(zone_col)
-    #
-    #     # give mapping from params to coefficients and to store the order in which we get the columns.
-    #     self._filter_columns = filter_columns
-    #     self._params_order = ["a1", 'a2', 't_out', 'bias'] + list(zone_col)
-    #
-    #     # fit the data. we start our guess with all ones for coefficients.
-    #     # Need to do so to be able to generalize to variable number of zones.
-    #     popt, pcov = curve_fit(self._func, X[filter_columns].T.as_matrix(), y.as_matrix(),
-    #                            p0=np.ones(len(
-    #                                self._params_order)))
-    #     self._params = np.array(popt)
-    #     return self
 
     # Fit without zone interlocking.
     # TODO train by cutting out small dt's.
@@ -174,7 +144,7 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         # to offset for actions which were less than 15 min. Normalizes to 15 min intervals.
         # TODO maybe make variable standard intervals.
         # TODO Maybe no scales.
-        diff_scaled = diff * 15. / dt
+        diff_scaled = diff # * 15. / dt
         mean_error = np.mean(diff_scaled)
         # root mean square error
         rmse = np.sqrt(np.mean(np.square(diff_scaled)))
@@ -208,18 +178,26 @@ class ThermalModel(BaseEstimator, RegressorMixin):
 
         # Get model error
         mean_error, rmse, std = self._normalizedRMSE_STD(prediction, y, X['dt'])
-        self.model_error.append({"mean": mean_error, "rmse": rmse, "std": std})
 
         # add trivial error for reference. Trivial error assumes that the temperature in X["dt"] time will be the same
         # as the one at the start of interval.
         trivial_mean_error, trivial_rmse, trivial_std = self._normalizedRMSE_STD(X['t_in'], y, X['dt'])
-        self.baseline_error.append({"mean": trivial_mean_error, "rmse": trivial_rmse, "std": trivial_std})
 
+        # append errors to class.
+        self.model_error.append({"mean": mean_error, "rmse": rmse, "std": std})
+        self.baseline_error.append({"mean": trivial_mean_error, "rmse": trivial_rmse, "std": trivial_std})
         # to keep track of whether we are better than the baseline/trivial
         self.betterThanBaseline.append(trivial_rmse > rmse)
-
         # To know which actions we scored on
         self.scoreTypeList.append(scoreType)
+
+        # if self._cross_eval:
+        #     ThermalModel.model_error.append({"mean": mean_error, "rmse": rmse, "std": std})
+        #     ThermalModel.baseline_error.append({"mean": trivial_mean_error, "rmse": trivial_rmse, "std": trivial_std})
+        #     # to keep track of whether we are better than the baseline/trivial
+        #     ThermalModel.betterThanBaseline.append(trivial_rmse > rmse)
+        #     # To know which actions we scored on
+        #     ThermalModel.scoreTypeList.append(scoreType)
 
         return rmse
 

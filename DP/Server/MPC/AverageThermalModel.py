@@ -51,11 +51,11 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         for i in range(X.shape[0]):
             data_point = X[i]
             if data_point[a1] == 1:
-                t_next.append(data_point[Tin] + a1_delta*data_point[dt])
+                t_next.append(data_point[Tin] + a1_delta ) # * data_point[dt])
             elif data_point[a2] == 1:
-                t_next.append(data_point[Tin] + a2_delta*data_point[dt])
+                t_next.append(data_point[Tin] + a2_delta ) # * data_point[dt])
             else:
-                t_next.append(data_point[Tin] + a0_delta*data_point[dt])
+                t_next.append(data_point[Tin] + a0_delta ) # * data_point[dt])
 
         return np.array(t_next)
 
@@ -69,10 +69,8 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         :param y: the labels corresponding to the data. As a pd.dataframe
         :return self
         """
-        zone_col = X.columns[["zone_temperature_" in col for col in X.columns]]
 
-        filter_columns = ['t_in', 'a1', 'a2', 't_out', 'dt'] + list(zone_col)
-
+        filter_columns = ['t_in', 'a1', 'a2']
         # give mapping from params to coefficients and to store the order in which we get the columns.
         self._filter_columns = filter_columns
 
@@ -81,7 +79,7 @@ class ThermalModel(BaseEstimator, RegressorMixin):
             # get the mean change of temperature from now to next. Normalized
             # TODO assuming action_data has "t_next"
             # TODO assuming that mean will be a float
-            return np.mean((action_data["t_next"] - action_data["t_in"])/action_data["dt"])
+            return np.mean(y - action_data["t_in"]) # /action_data["dt"])
 
         cooling_data = X[X["a2"] == 1]
         heating_data = X[X["a1"] == 1]
@@ -90,11 +88,42 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         mean_cooling_delta = get_delta_mean(cooling_data)
         mean_heating_delta = get_delta_mean(heating_data)
         mean_no_action_delta = get_delta_mean(no_action_data)
-        self._params = [mean_no_action_delta, mean_heating_delta, mean_cooling_delta]
+        self._params = np.array([mean_no_action_delta, mean_heating_delta, mean_cooling_delta])
+
+        def average_quality_check(*params):
+            no_action_average, heating_average, cooling_average = params
+
+            consistency_flag = True
+
+            if heating_average <= 0:
+                consistency_flag = False
+                print("Warning, heating_average is lower than 0.")
+            if cooling_average >= 0:
+                consistency_flag = False
+                print("Warning, cooling_average is higher than 0.")
+
+            # check that heating is more than no action and cooling
+            if heating_average <= no_action_average or heating_average <= cooling_average:
+                consistency_flag = False
+                print("Warning, heating_average is too low compared to other actions.")
+            # check cooling is lower than heating and no action
+            if cooling_average >= no_action_average or cooling_average >= heating_average:
+                consistency_flag = False
+                print("Warning, cooling_average is too high compared to other actions.")
+            # check if no action is between cooling and heating
+            if not cooling_average < no_action_average < heating_average:
+                consistency_flag = False
+                print("Warning, no_action_average is not inbetween heating temperature and cooling temperature.")
+
+            # want to know for what data it didn't work
+            if not consistency_flag:
+                print("Inconsistency for following parameters:")
+                print(params)
+
+            return consistency_flag
+        assert average_quality_check(*self._params)
 
         return self
-
-    # ==== average model ends. ======
 
 
     def updateFit(self, X, y):
@@ -102,11 +131,9 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         :param X: (pd.df) with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperature where all have 
         to begin with "zone_temperature_" + "zone name
         :param y: (float)"""
-        # NOTE: Using gradient decent $$self.params = self.param - self.learning_rate * 2 * (self._func(X, *params) - y) * features(X)$$
-        loss = self._func(X[self._filter_columns].T.as_matrix(), *self._params)[0] - y
-        adjust = self.learning_rate * loss * self._features(X[self._filter_columns].T.as_matrix())
-        self._params = self._params - adjust.reshape(
-            (adjust.shape[0]))  # to make it the same dimensions as self._params
+        pass
+
+    # ==== average model ends. ======
 
     def predict(self, X, should_round=False):
         # TODO CHange in Advise class. Say it should round.
@@ -131,12 +158,18 @@ class ThermalModel(BaseEstimator, RegressorMixin):
 
     def _normalizedRMSE_STD(self, prediction, y, dt):
         '''Computes the RMSE with scaled differences to normalize to 15 min intervals.
-        NOTE: Use method if you already have predictions.'''
+        NOTE: Use method if you already have predictions.
+        :param prediction: (np.array) list of predictions.
+        :param y: (np.array) list of expected values.
+        :param dt: (np.array) list of dt for each prediction. (i.e. time between t_in and t_next)
+        :return: mean_error (mean of prediction - y), rmse, std (std of the error). All data properly normalized to 15 min
+        intervals.'''
         diff = prediction - y
 
         # to offset for actions which were less than 15 min. Normalizes to 15 min intervals.
         # TODO maybe make variable standard intervals.
-        diff_scaled = diff * 15. / dt
+        # TODO Maybe no scales.
+        diff_scaled = diff # * 15. / dt
         mean_error = np.mean(diff_scaled)
         # root mean square error
         rmse = np.sqrt(np.mean(np.square(diff_scaled)))
@@ -184,6 +217,105 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         self.scoreTypeList.append(scoreType)
 
         return rmse
+
+class AverageMPCThermalModel(ThermalModel):
+    """Class specifically designed for the MPC process. A child class of ThermalModel with functions
+        designed to simplify usage."""
+
+    def __init__(self, zone, thermal_data, interval_length, thermal_precision=0.05):
+        """
+        :param zone: The zone this Thermal model is meant for. 
+        :param thermal_data: pd.df thermal data for zone (as preprocessed by ControllerDataManager). Only used for fitting.
+        :param interval_length: (int) Number of minutes between
+        :param thermal_precision: (float) The increment to which to round predictions to. (e.g. 1.77 becomes 1.75
+         and 4.124 becomes 4.10)
+        """
+        self.zone = zone
+        thermal_data = thermal_data.rename({"temperature_zone_" + self.zone: "t_in"}, axis="columns")
+
+        # set our parent up first
+        super(AverageMPCThermalModel, self).__init__(thermal_precision=thermal_precision) # TODO What to do with Learning rate ?
+        super(AverageMPCThermalModel, self).fit(thermal_data, thermal_data["t_next"])
+
+        self._oldParams = {}
+
+        self.interval = interval_length  # new for predictions. Will be fixed right?
+
+        self.zoneTemperatures = None
+        self.weatherPredictions = None  # store weather predictions for whole class
+
+        self.lastAction = None  # TODO Fix, absolute hack and not good. controller should store this.
+
+    # TODO Fix, absolute hack and not good. controller should store this.
+    def set_last_action(self, action):
+        pass
+
+    def set_weather_predictions(self, weatherPredictions):
+        pass
+
+    def _datapoint_to_dataframe(self, action, t_in):
+        """A helper function that converts a datapoint to a pd.df used for predictions.
+        Assumes that we have self.zone"""
+        X = {"a1": int(0 < action <= 1), "a2": int(1 < action <= 2),
+             "t_in": t_in}
+
+        return pd.DataFrame(X, index=[0])
+
+    def set_temperatures_and_fit(self, curr_zone_temperatures, interval, now):
+        """
+        performs one update step for the thermal model and
+        stores curr temperature for every zone. Call whenever we are starting new interval.
+        :param curr_zone_temperatures: {zone: temperature}
+        :param interval: The delta time since the last action was called. 
+        :param now: the current time in the timezone as weather_predictions.
+        :return: None
+        """
+        pass
+
+
+    def predict(self, t_in, zone, action, time=-1, outside_temperature=None, interval=None):
+        """
+        Predicts temperature for zone given.
+        :param t_in: 
+        :param zone: 
+        :param action: (float)
+        :param outside_temperature: 
+        :param interval: 
+        :param time: the hour index for self.weather_predictions. 
+        TODO understand how we can use hours if we look at next days .(i.e. horizon extends over midnight.)
+        :return: (array) predictions in order
+        """
+        X = self._datapoint_to_dataframe(action, t_in)  # TODO which t_in are we really assuming?
+        return super(AverageMPCThermalModel, self).predict(X)
+
+    # def save_to_config(self):
+    #     """saves the whole model to a yaml file.
+    #     RECOMMENDED: PYAML should be installed for prettier config file."""
+    #     config_dict = {}
+    #
+    #     # store zone temperatures
+    #     config_dict["Zone Temperatures"] = self.zoneTemperatures
+    #
+    #     # store coefficients
+    #     coefficients = {parameter_name: param for parameter_name, param in
+    #                     zip(super(MPCThermalModel, self)._params_order, super(MPCThermalModel, self)._params)}
+    #     config_dict["coefficients"] = coefficients
+    #
+    #     # store evaluations and RMSE's.
+    #     config_dict["Evaluations"] = {}
+    #     config_dict["Evaluations"]["Baseline"] = super(MPCThermalModel, self).baseline_error
+    #     config_dict["Evaluations"]["Model"] = super(MPCThermalModel, self).model_error
+    #     config_dict["Evaluations"]["ActionOrder"] = super(MPCThermalModel, self).scoreTypeList
+    #     config_dict["Evaluations"]["Better Than Baseline"] = super(MPCThermalModel, self).betterThanBaseline
+    #
+    #     with open("../ZoneConfigs/thermal_model_" + self.zone, 'wb') as ymlfile:
+    #         # TODO Note import pyaml here to get a pretty config file.
+    #         try:
+    #             import pyaml
+    #             pyaml.dump(config_dict[self.zone], ymlfile)
+    #         except ImportError:
+    #             yaml.dump(config_dict[self.zone], ymlfile)
+
 
 if __name__ == '__main__':
     import sys
