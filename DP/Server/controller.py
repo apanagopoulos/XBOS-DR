@@ -330,10 +330,11 @@ if __name__ == '__main__':
         return concat_data[concat_data.columns[filter_columns]]
 
     building_thermal_data = concat_zone_data(thermal_data)
+    filtered_building_thermal_data = building_thermal_data[building_thermal_data["dt"] != 1]
 
     # TODO INTERVAL SHOULD NOT BE IN config_file.yml, THERE SHOULD BE A DIFFERENT INTERVAL FOR EACH ZONE
     # TODO, NOTE, We are training on the whole building.
-    zone_thermal_models = {zone: AverageMPCThermalModel(zone, building_thermal_data, interval_length=cfg["Interval_Length"],
+    zone_thermal_models = {zone: AverageMPCThermalModel(zone, filtered_building_thermal_data, interval_length=cfg["Interval_Length"],
                                                  thermal_precision=cfg["Thermal_Precision"])
                            for zone, zone_thermal_data in thermal_data.items()}
     print("Trained Thermal Model")
