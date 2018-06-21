@@ -62,7 +62,7 @@ def debug_print(now, building, zone, adv, safety_constraints, prices, building_s
 		write_string += str(adv.occ_predictions)
 		write_string += "\nSetpoints:\n"
 		write_string += str(building_setpoints)
-		write_string += "Time needed to calculate the shortest path:"
+		write_string += "\nTime needed to calculate the shortest path:\n"
 		write_string += str(time)
 
 		if not os.path.exists("../Server/Buildings/"+building+"/Logs"):
