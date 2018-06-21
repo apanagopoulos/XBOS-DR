@@ -5,6 +5,7 @@ import time
 import traceback
 import math
 import pandas as pd
+import utils
 
 import pytz
 import yaml
@@ -23,27 +24,11 @@ from xbos.services.hod import HodClient
 from xbos.devices.thermostat import Thermostat
 
 
-def in_between(now, start, end):
-    if start < end:
-        return start <= now < end
-    elif end < start:
-        return start <= now or now < end
-    else:
-        return True
-
-
-def getDatetime(date_string):
-    """Gets datetime from string with format HH:MM.
-    :param date_string: string of format HH:MM
-    :returns datetime.time() object with no associated timzone. """
-    return datetime.datetime.strptime(date_string, "%H:%M").time()
-
 
 # TODO set up a moving average for how long it took for action to take place.
 # the main controller
 def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone):
     """
-    
     :param cfg: 
     :param advise_cfg: 
     :param tstats: 
@@ -74,9 +59,9 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone):
         weather = dataManager.weather_fetch()
         thermal_model.set_weather_predictions(weather)
 
-        if (cfg["Pricing"]["DR"] and in_between(now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])).time(),
-                                                getDatetime(cfg["Pricing"]["DR_Start"]),
-                                                getDatetime(cfg["Pricing"]["DR_Finish"]))): #\
+        if (cfg["Pricing"]["DR"] and utils.in_between(now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])).time(),
+                                                utils.get_datetime(cfg["Pricing"]["DR_Start"]),
+                                                utils.get_datetime(cfg["Pricing"]["DR_Finish"]))): #\
                 #or now.weekday() == 4:  # TODO REMOVE ALLWAYS HAVING DR ON FRIDAY WHEN DR SUBSCRIBE IS IMPLEMENTED
             DR = True
         else:
@@ -202,31 +187,6 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone):
     return True, p
 
 
-def has_setpoint_changed(tstat, setpoint_data, zone):
-    """
-    Checks if thermostats was manually changed and prints warning. 
-    :param tstat: Tstat object we want to look at. 
-    :param setpoint_data: dict which has keys {"heating_setpoint": bool, "cooling_setpoint": bool} and corresponds to
-            the setpoint written to the thermostat by MPC. 
-    :param zone: Name of the zone to print correct messages. 
-    :return: Bool. Whether tstat setpoints are equal to setpoints written to tstat.
-    """
-    WARNING_MSG = "WARNING. %s has been manually changed in zone %s. Setpoint is at %s from expected %s. " \
-                  "Setting override to False and intiatiating program stop."
-    flag_changed = False
-    if tstat.cooling_setpoint != setpoint_data["cooling_setpoint"]:
-        flag_changed = True
-        print(WARNING_MSG % ("cooling setpoint", zone, tstat.cooling_setpoint, setpoint_data["cooling_setpoint"]))
-    if tstat.heating_setpoint != setpoint_data["heating_setpoint"]:
-        flag_changed = True
-        print(WARNING_MSG % ("heating setpoint", zone, tstat.heating_setpoint, setpoint_data["heating_setpoint"]))
-
-    # write override false so the local schedules can take over again.
-    if flag_changed:
-        tstat.write({"override": False})
-    return flag_changed
-
-
 class ZoneThread(threading.Thread):
     def __init__(self, cfg_filename, tstats, zone, client, thermal_model):
         threading.Thread.__init__(self)
@@ -283,9 +243,10 @@ class ZoneThread(threading.Thread):
             # (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
 
             # end program if setpoints have been changed. (If not writing to tstat we don't want this)
-            # if action_data is not None and has_setpoint_changed(self.tstats[self.zone], action_data, self.zone):
+            # if action_data is not None and utils.has_setpoint_changed(self.tstats[self.zone], action_data, self.zone):
             #     print("Ending program for zone %s due to manual setpoint changes. \n" % self.zone)
             #     return
+
 
 
 if __name__ == '__main__':
@@ -300,8 +261,8 @@ if __name__ == '__main__':
     with open(yaml_filename, 'r') as ymlfile:
         cfg = yaml.load(ymlfile)
 
-    # TODO fix
-    if cfg["Server"] and False:
+    # Get client.
+    if cfg["Server"]:
         client = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
     else:
         client = get_client()
@@ -339,34 +300,10 @@ if __name__ == '__main__':
     print("Trained Thermal Model")
     # --------------------------------------
 
-
-    with open(yaml_filename, 'r') as ymlfile:
-        cfg = yaml.load(ymlfile)
-
     hc = HodClient("xbos/hod", client)
 
-    q = """SELECT ?uri ?zone FROM %s WHERE {
-        ?tstat rdf:type/rdfs:subClassOf* brick:Thermostat .
-        ?tstat bf:uri ?uri .
-        ?tstat bf:controls/bf:feeds ?zone .
-        };""" % cfg["Building"]
-
-    # Start of FIX for missing Brick query
-    thermostat_query = """SELECT ?zone ?uri FROM  %s WHERE {
-              ?tstat rdf:type brick:Thermostat .
-              ?tstat bf:controls ?RTU .
-              ?RTU rdf:type brick:RTU .
-              ?RTU bf:feeds ?zone. 
-              ?zone rdf:type brick:HVAC_Zone .
-              ?tstat bf:uri ?uri.
-              };"""
-    q = thermostat_query % cfg["Building"]
-    # End of FIX - delete when Brick is fixed
-
+    tstats = utils.get_thermostats(client, hc, cfg["Building"])
     threads = []
-    tstat_query_data = hc.do_query(q)['Rows']
-    print(tstat_query_data)
-    tstats = {tstat["?zone"]: Thermostat(client, tstat["?uri"]) for tstat in tstat_query_data}
 
     for zone, tstat in tstats.items():
         thread = ZoneThread(yaml_filename, tstats, zone, client, zone_thermal_models[zone])
