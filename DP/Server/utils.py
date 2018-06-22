@@ -110,12 +110,12 @@ def has_setpoint_changed(tstat, setpoint_data, zone, building):
         if not os.path.exists("Buildings/" + building + "/Logs"):
             os.makedirs("Buildings/" + building + "/Logs")
 
-        if os.path.exists("Buildings/" + building + "/Logs/ThermostatManualChanges" + ".tlog"):
+        if os.path.exists("Buildings/" + building + "/Logs/" + zone + ".log"):
             append_write = 'a'  # append if already exists
         else:
             append_write = 'w'  # make a new file if not
 
-        logfile = open("Buildings/" + building + "/Logs/" + zone + ".tlog", append_write)
+        logfile = open("Buildings/" + building + "/Logs/" + zone + ".log", append_write)
         logfile.write(
             "THERMOSTAT CHANGED MANUALY AT : " + datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC")
         logfile.close()

@@ -27,7 +27,7 @@ for d in all_dir[1]:
         # print(config["Advise"]["DR_Lambda"])
         # print(config["Advise"]["Lambda"])
         config["Advise"]["DR_Lambda"] = 0.7
-        config["Advise"]["General_Lambda"] = 0.7
+        config["Advise"]["General_Lambda"] = 0.995
         # ==============================
 
         # Writes the changes the the file

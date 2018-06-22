@@ -63,7 +63,7 @@ def debug_print(now, building, zone, adv, safety_constraints, prices, building_s
         write_string += "\nSetpoints:\n"
         write_string += str(building_setpoints)
         write_string += "\nTime needed to calculate the shortest path:\n"
-        write_string += str(time)
+        write_string += str(time) + "\n"
 
         if not os.path.exists("../Server/Buildings/" + building + "/Logs"):
             os.makedirs("../Server/Buildings/" + building + "/Logs")

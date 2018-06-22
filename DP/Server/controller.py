@@ -184,8 +184,7 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building)
     # try to commit the changes to the thermostat, if it doesnt work 10 times in a row ignore and try again later
     for i in range(advise_cfg["Advise"]["Thermostat_Write_Tries"]):
         try:
-            # TODO Uncomment
-            # tstat.write(p)
+            tstat.write(p)
             thermal_model.set_last_action(
                 action)  # TODO Document that this needs to be set after we are sure that writing has succeeded.
             break
@@ -215,6 +214,7 @@ class ZoneThread(threading.Thread):
         action_data = None
         while True:
             try:
+                # Reloading the config everytime we iterate.
                 with open(self.cfg_filename, 'r') as ymlfile:
                     cfg = yaml.load(ymlfile)
                 with open("Buildings/" + cfg["Building"] + "/ZoneConfigs/" + self.zone + ".yml", 'r') as ymlfile:
@@ -250,10 +250,10 @@ class ZoneThread(threading.Thread):
                 print("WARNING, normal schedule has not succeeded.")
 
             print datetime.datetime.now()
-            print(cfg["Building"]) # TODO Rethink. now every thread will write this.
+            print("This process is for building %s" % cfg["Building"]) # TODO Rethink. now every thread will write this.
             # Wait for the next interval.
-            # time.sleep(60. * float(cfg["Interval_Length"]) - (
-            # (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
+            time.sleep(60. * float(cfg["Interval_Length"]) - (
+            (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
 
             # end program if setpoints have been changed. (If not writing to tstat we don't want this)
             if action_data is not None and utils.has_setpoint_changed(self.tstats[self.zone], action_data, self.zone, self.building):
@@ -273,7 +273,7 @@ if __name__ == '__main__':
     with open(yaml_filename, 'r') as ymlfile:
         cfg = yaml.load(ymlfile)
 
-    if cfg["Server"]:
+    if cfg["Server"] and False:
         client = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
     else:
         client = get_client()
@@ -311,7 +311,7 @@ if __name__ == '__main__':
     threads = []
 
     for zone, tstat in tstats.items():
-        thread = ZoneThread(yaml_filename, tstats, zone, client, zone_thermal_models[zone])
+        thread = ZoneThread(yaml_filename, tstats, zone, client, zone_thermal_models[zone], cfg["Building"])
         thread.start()
         threads.append(thread)
 
