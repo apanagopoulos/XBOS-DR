@@ -7,7 +7,10 @@ import pytz
 import yaml
 import numpy as np
 
-from DP.Server.utils import plotly_figure
+import sys
+sys.path.insert(0, '../')
+from utils import plotly_figure
+
 from Discomfort import Discomfort
 from EnergyConsumption import EnergyConsumption
 from Occupancy import Occupancy
