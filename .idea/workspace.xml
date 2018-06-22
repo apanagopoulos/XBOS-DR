@@ -2,14 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="3cd4977d-35f2-4e6f-a3e1-915a460e5d1c" name="Default" comment="Added building print for each thread.">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/DP/Server/Buildings/avenal-public-works-yard/ZoneConfigs/HVAC_Zone_Public_Works.yml" afterPath="$PROJECT_DIR$/DP/Server/Buildings/avenal-public-works-yard/ZoneConfigs/HVAC_Zone_Public_Works.yml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/DP/Server/Buildings/ciee/ZoneConfigs/HVAC_Zone_Eastzone.yml" afterPath="$PROJECT_DIR$/DP/Server/Buildings/ciee/ZoneConfigs/HVAC_Zone_Eastzone.yml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/DP/Server/Buildings/south-berkeley-senior-center/ZoneConfigs/HVAC_Zone_AC-2.yml" afterPath="$PROJECT_DIR$/DP/Server/Buildings/south-berkeley-senior-center/ZoneConfigs/HVAC_Zone_AC-2.yml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/DP/Server/Buildings/south-berkeley-senior-center/ZoneConfigs/HVAC_Zone_AC-3.yml" afterPath="$PROJECT_DIR$/DP/Server/Buildings/south-berkeley-senior-center/ZoneConfigs/HVAC_Zone_AC-3.yml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/DP/Server/Buildings/south-berkeley-senior-center/ZoneConfigs/HVAC_Zone_Front_Office.yml" afterPath="$PROJECT_DIR$/DP/Server/Buildings/south-berkeley-senior-center/ZoneConfigs/HVAC_Zone_Front_Office.yml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/DP/Server/controller.py" afterPath="$PROJECT_DIR$/DP/Server/controller.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/DP/Utils/FastConfigUpdate.py" afterPath="$PROJECT_DIR$/DP/Utils/FastConfigUpdate.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -361,8 +354,8 @@
       <file leaf-file-name="controller.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/DP/Server/controller.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="213">
-              <caret line="290" column="71" lean-forward="false" selection-start-line="290" selection-start-column="71" selection-end-line="290" selection-end-column="71" />
+            <state relative-caret-position="205">
+              <caret line="275" column="20" lean-forward="false" selection-start-line="275" selection-start-column="20" selection-end-line="275" selection-end-column="20" />
               <folding>
                 <element signature="e#0#15#0" expanded="true" />
               </folding>
@@ -1809,8 +1802,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/DP/Server/controller.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="213">
-          <caret line="290" column="71" lean-forward="false" selection-start-line="290" selection-start-column="71" selection-end-line="290" selection-end-column="71" />
+        <state relative-caret-position="205">
+          <caret line="275" column="20" lean-forward="false" selection-start-line="275" selection-start-column="20" selection-end-line="275" selection-end-column="20" />
           <folding>
             <element signature="e#0#15#0" expanded="true" />
           </folding>

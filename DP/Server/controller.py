@@ -273,7 +273,7 @@ if __name__ == '__main__':
     with open(yaml_filename, 'r') as ymlfile:
         cfg = yaml.load(ymlfile)
 
-    if cfg["Server"] and False:
+    if cfg["Server"]:
         client = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
     else:
         client = get_client()
@@ -285,7 +285,6 @@ if __name__ == '__main__':
     try:
         with open("Thermal Data/demo_" + cfg["Building"], "r") as f:
             thermal_data = pickle.load(f)
-
     except:
         controller_dataManager = ControllerDataManager(cfg, client)
         thermal_data = controller_dataManager.thermal_data(days_back=50)
