@@ -54,9 +54,12 @@ for directory in all_dir[1]:
         config["Advise"]["General_Lambda"] = 0.995
 
         # Decide whether to run MPC.
-        if "Cooling_Consumption_Stage_2" in config["Advise"]:
+        if "Cooling_Consumption_Stage_2" in config["Advise"] and not directory == "south-berkeley-senior-center": # we will test thermal model on a two stage cooling building.
             config["Advise"]["MPC"] = False
-            print("%s zone will not run MPC." % f)
+            print("%s zone will NOT run MPC." % f)
+        else:
+            config["Advise"]["MPC"] = True
+            print("%s zone will run MPC." % f)
 
         # ==============================
 

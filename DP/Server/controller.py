@@ -288,7 +288,7 @@ if __name__ == '__main__':
 
     except:
         controller_dataManager = ControllerDataManager(cfg, client)
-        thermal_data = controller_dataManager.thermal_data(days_back=20)
+        thermal_data = controller_dataManager.thermal_data(days_back=50)
         with open("Thermal Data/demo_" + cfg["Building"], "wb") as f:
             pickle.dump(thermal_data, f)
 
