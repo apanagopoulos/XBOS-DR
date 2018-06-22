@@ -38,6 +38,9 @@ def debug_print(now, building, zone, adv, safety_constraints, prices, building_s
         print building_setpoints
         print "Time needed for the shortest path:"
         print time
+
+        print "Discomfort"
+        print [i.]
     else:
 
         write_string = "\n\n" + now.strftime('%Y-%m-%d %H:%M:%S') + "\n"
