@@ -23,7 +23,7 @@ for directory in all_dir[1]:
         building_config = yaml.load(f)
 
     # Get ready for DR-event so we can run on server
-    building_config["Server"] = True
+    building_config["Server"] = False
 
     # Setting DR start and end
     building_config["Pricing"]["DR_Start"] = "14:00"

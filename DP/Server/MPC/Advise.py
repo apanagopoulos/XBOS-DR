@@ -9,6 +9,7 @@ import numpy as np
 
 import sys
 sys.path.insert(0, '../')
+import utils
 from utils import plotly_figure
 
 from Discomfort import Discomfort
@@ -66,7 +67,7 @@ class EVA:
         self.noZones = noZones
         self.current_time = current_time
         self.l = l
-        self.g = nx.MultiDiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
+        self.g = nx.DiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
         self.interval = interval
         self.root = root
         self.target = self.get_real_time(pred_window * interval)
@@ -260,59 +261,107 @@ class Advise:
 if __name__ == '__main__':
     import sys
 
-    ZONE = "HVAC_Zone_Centralzone"
+    ZONE = "HVAC_Zone_AC-1"
 
     sys.path.insert(0, '..')
+    sys.path.insert(0, '../../Utils')
+    import Debugger
     from DataManager import DataManager
+
     from xbos import get_client
-
-    with open("../config_file.yml", 'r') as ymlfile:
-        cfg = yaml.load(ymlfile)
-
-    with open("../Buildings/ciee/ZoneConfigs/" + ZONE + ".yml", 'r') as ymlfile:
-        advise_cfg = yaml.load(ymlfile)
-
-    if cfg["Server"]:
-        c = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
-    else:
-        c = get_client()
+    from ControllerDataManager import ControllerDataManager
+    from AverageThermalModel import AverageMPCThermalModel
 
     from xbos.services.hod import HodClient
     from xbos.devices.thermostat import Thermostat
+    import time
 
-    hc = HodClient("xbos/hod", c)
 
-    q = """SELECT ?uri ?zone FROM %s WHERE {
-				?tstat rdf:type/rdfs:subClassOf* brick:Thermostat .
-				?tstat bf:uri ?uri .
-				?tstat bf:controls/bf:feeds ?zone .
-				};""" % cfg["Building"]
+    # TODO check for comfortband height and whether correctly implemented
+    # read from config file
+    try:
+        yaml_filename = "../Buildings/%s/%s.yml" % (sys.argv[1], sys.argv[1])
+    except:
+        sys.exit("Please specify the configuration file as: python2 controller.py config_file.yaml")
+
+    building = sys.argv[1]
+
+    with open(yaml_filename, 'r') as ymlfile:
+        cfg = yaml.load(ymlfile)
+
+    if cfg["Server"]:
+        client = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
+    else:
+        client = get_client()
+
+    # --- Thermal Model Init ------------
+    # initialize and fit thermal model
     import pickle
 
-    with open("../Thermal Data/ciee_thermal_data_demo", "r") as f:
-        thermal_data = pickle.load(f)
-    dm = DataManager(cfg, advise_cfg, c, ZONE)
-    tstat_query_data = hc.do_query(q)['Rows']
-    tstats = {tstat["?zone"]: Thermostat(c, tstat["?uri"]) for tstat in tstat_query_data}
+    try:
+        with open("../Thermal Data/demo_" + cfg["Building"], "r") as f:
+            thermal_data = pickle.load(f)
+    except:
+        controller_dataManager = ControllerDataManager(cfg, client)
+        thermal_data = controller_dataManager.thermal_data(days_back=50)
+        with open("../Thermal Data/demo_" + cfg["Building"], "wb") as f:
+            pickle.dump(thermal_data, f)
+
+    # Concat zone data to put all data together and filter such that all datapoints have dt != 1
+    building_thermal_data = utils.concat_zone_data(thermal_data)
+    filtered_building_thermal_data = building_thermal_data[building_thermal_data["dt"]!=1]
+
 
     # TODO INTERVAL SHOULD NOT BE IN config_file.yml, THERE SHOULD BE A DIFFERENT INTERVAL FOR EACH ZONE
-    from ThermalModel import *
+    # TODO, NOTE, We are training on the whole building.
+    zone_thermal_models = {zone: AverageMPCThermalModel(zone, filtered_building_thermal_data, interval_length=cfg["Interval_Length"],
+                                                 thermal_precision=cfg["Thermal_Precision"])
+                           for zone, zone_thermal_data in thermal_data.items()}
+    print("Trained Thermal Model")
+    # --------------------------------------
 
-    thermal_model = MPCThermalModel(thermal_data, interval_length=cfg["Interval_Length"])
-    thermal_model.setZoneTemperaturesAndFit(
-        {dict_zone: dict_tstat.temperature for dict_zone, dict_tstat in tstats.items()}, dt=cfg["Interval_Length"])
-    thermal_model.setWeahterPredictions(dm.weather_fetch())
+    hc = HodClient("xbos/hod", client)
 
-    adv = Advise(["HVAC_Zone_Centralzone"],
-                 datetime.datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(
-                     tz=pytz.timezone("America/Los_Angeles")),
-                 dm.preprocess_occ(),
-                 [80],  # [{dict_zone: dict_tstat.temperature for dict_zone, dict_tstat in tstats.items()}[ZONE]],
-                 thermal_model,
-                 dm.prices(),
-                 0.995, 0.995, False, 15, 2, True, 0.075, 1.25, 0.01, 400., 4,
-                 dm.building_setpoints(),
+    with open("../Buildings/" + cfg["Building"] + "/ZoneConfigs/" + ZONE + ".yml", 'r') as ymlfile:
+        advise_cfg = yaml.load(ymlfile)
+
+    naive_now = datetime.datetime.strptime("2018-06-22 15:20:44", "%Y-%m-%d %H:%M:%S")
+    now =  pytz.timezone("UTC").localize(naive_now)
+
+    dm = DataManager(cfg, advise_cfg, client, ZONE, now=now)
+
+    dataManager = DataManager(cfg, advise_cfg, client, ZONE, now=now)
+    safety_constraints = dataManager.safety_constraints()
+    prices = dataManager.prices()
+    building_setpoints = dataManager.building_setpoints()
+
+    temperature = 67.3
+    DR = False
+
+    adv = Advise([ZONE],  # array because we might use more than one zone. Multiclass approach.
+                 now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])),
+                 dataManager.preprocess_occ(),
+                 [temperature],
+                 zone_thermal_models[ZONE],
+                 prices,
+                 advise_cfg["Advise"]["General_Lambda"],
+                 advise_cfg["Advise"]["DR_Lambda"],
+                 DR,
+                 cfg["Interval_Length"],
+                 advise_cfg["Advise"]["MPCPredictiveHorizon"],
+                 advise_cfg["Advise"]["Heating_Consumption"],
+                 advise_cfg["Advise"]["Cooling_Consumption"],
+                 advise_cfg["Advise"]["Ventilation_Consumption"],
+                 advise_cfg["Advise"]["Thermal_Precision"],
+                 advise_cfg["Advise"]["Occupancy_Obs_Len_Addition"],
+                 building_setpoints,
                  advise_cfg["Advise"]["Occupancy_Sensors"],
-                 dm.safety_constraints())
+                 safety_constraints)
 
-    print adv.advise()
+
+    adv_start = time.time()
+    adv.advise()
+    adv_end = time.time()
+
+    Debugger.debug_print(now, building, ZONE, adv, safety_constraints, prices, building_setpoints, adv_end - adv_start, file=False)
+
