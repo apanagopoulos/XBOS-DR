@@ -1,4 +1,5 @@
 import datetime
+import os
 
 import networkx as nx
 import plotly.offline as py
@@ -61,7 +62,7 @@ class EVA:
         self.noZones = noZones
         self.current_time = current_time
         self.l = l
-        self.g = nx.MultiDiGraph() #[TODO:Changed to MultiDiGraph... FIX print]
+        self.g = nx.MultiDiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
         self.interval = interval
         self.root = root
         self.target = self.get_real_time(pred_window * interval)
@@ -158,9 +159,9 @@ class EVA:
             # choose the shortest path
             if this_path_cost <= self.g.node[from_node]['usage_cost']:
                 '''
-				if this_path_cost == self.g.node[from_node]['usage_cost'] and self.g.node[from_node]['best_action'] == '0': [TODO: Is there any value in prunning here?]
+                if this_path_cost == self.g.node[from_node]['usage_cost'] and self.g.node[from_node]['best_action'] == '0': [TODO: Is there any value in prunning here?]
                     continue
-				'''
+                '''
                 self.g.add_node(from_node, best_action=action, best_successor=new_node, usage_cost=this_path_cost)
 
     def reconstruct_path(self, graph=None):
@@ -190,18 +191,18 @@ class EVA:
 class Advise:
     # the Advise class initializes all the Models and runs the shortest path algorithm
     def __init__(self, zones, current_time, occupancy_data, zone_temperature, thermal_model,
-                 prices, lamda, dr_lamda, dr, interval, predictions_hours, plot_bool, heating_cons, cooling_cons,
+                 prices, lamda, dr_lamda, dr, interval, predictions_hours, heating_cons, cooling_cons,
                  vent_cons,
                  thermal_precision, occ_obs_len_addition, setpoints, sensors, safety_constraints):
         # TODO do something with dr_lambda and vent const (they are added since they are in the config file.)
         # TODO Also, thermal_precision
-        self.plot = plot_bool
         self.current_time = current_time
 
         # initialize all models
         disc = Discomfort(setpoints, now=self.current_time)
 
         occ = Occupancy(occupancy_data, interval, predictions_hours, occ_obs_len_addition, sensors)
+        self.occ_predictions = occ.predictions
         safety = Safety(safety_constraints, noZones=1)
         energy = EnergyConsumption(prices, interval, now=self.current_time,
                                    heat=heating_cons, cool=cooling_cons)
@@ -235,15 +236,21 @@ class Advise:
         String
         """
         self.advise_unit.shortest_path(self.root)
-        path = self.advise_unit.reconstruct_path()
-        action = self.advise_unit.g.node[self.root]["best_action"] #self.advise_unit.g[path[0]][path[1]]['action'] [TODO Is this Fix correct?]
-
-        if self.plot:
-            fig = plotly_figure(self.advise_unit.g, path=path)
-            py.plot(fig)
-
-        print("Fixed action:"+str(action))
+        self.path = self.advise_unit.reconstruct_path()
+        self.graph = self.advise_unit.g
+        action = self.advise_unit.g.node[self.root][
+            "best_action"]  # self.advise_unit.g[path[0]][path[1]]['action'] [TODO Is this Fix correct?]
         return action
+
+    def g_plot(self, zone):
+
+        try:
+            os.remove('mpc_graph_' + zone + '.html')
+        except OSError:
+            pass
+
+        fig = plotly_figure(self.advise_unit.g, path=self.path)
+        py.plot(fig, filename='mpc_graph_' + zone + '.html', auto_open=False)
 
 
 if __name__ == '__main__':

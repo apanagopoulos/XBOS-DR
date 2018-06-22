@@ -55,6 +55,15 @@ def get_datetime(date_string):
 # ============ DATA FUNCTIONS ============
 
 
+def concat_zone_data(thermal_data):
+    """Concatinates all thermal data zone data into one big dataframe. Will sort by index. Get rid of all zone_temperature columns.
+    :param thermal_data: {zone: pd.df}
+    :return pd.df without zone_temperature columns"""
+    concat_data = pd.concat(thermal_data.values()).sort_index()
+    filter_columns = ["zone_temperature" not in col for col in concat_data.columns]
+    return concat_data[concat_data.columns[filter_columns]]
+
+
 def as_pandas(result):
     time = result[list(result.keys())[0]][:, 0]
     df = pd.DataFrame(time, columns = ['Time'])
@@ -74,13 +83,13 @@ def as_pandas(result):
 # ============ THERMOSTAT FUNCTIONS ============
 
 
-def has_setpoint_changed(tstat, setpoint_data, zone):
+def has_setpoint_changed(tstat, setpoint_data, zone, building):
     """
-    Checks if thermostats was manually changed and prints warning. 
-    :param tstat: Tstat object we want to look at. 
+    Checks if thermostats was manually changed and prints warning.
+    :param tstat: Tstat object we want to look at.
     :param setpoint_data: dict which has keys {"heating_setpoint": bool, "cooling_setpoint": bool} and corresponds to
-            the setpoint written to the thermostat by MPC. 
-    :param zone: Name of the zone to print correct messages. 
+            the setpoint written to the thermostat by MPC.
+    :param zone: Name of the zone to print correct messages.
     :return: Bool. Whether tstat setpoints are equal to setpoints written to tstat.
     """
     WARNING_MSG = "WARNING. %s has been manually changed in zone %s. Setpoint is at %s from expected %s. " \
@@ -95,7 +104,21 @@ def has_setpoint_changed(tstat, setpoint_data, zone):
 
     # write override false so the local schedules can take over again.
     if flag_changed:
+
         tstat.write({"override": False})
+        import os
+        if not os.path.exists("Buildings/" + building + "/Logs"):
+            os.makedirs("Buildings/" + building + "/Logs")
+
+        if os.path.exists("Buildings/" + building + "/Logs/ThermostatManualChanges" + ".tlog"):
+            append_write = 'a'  # append if already exists
+        else:
+            append_write = 'w'  # make a new file if not
+
+        logfile = open("Buildings/" + building + "/Logs/" + zone + ".tlog", append_write)
+        logfile.write(
+            "THERMOSTAT CHANGED MANUALY AT : " + datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC")
+        logfile.close()
     return flag_changed
 
 
@@ -155,7 +178,7 @@ def plotly_figure(G, path=None):
                 y=(y0+y1)/2,
                 xref='x',
                 yref='y',
-                text=G.get_edge_data(edge[0], edge[1])['action'],
+                text=G.get_edge_data(edge[0], edge[1])[0]['action'],
                 showarrow=False,
                 arrowhead=2,
                 ax=0,

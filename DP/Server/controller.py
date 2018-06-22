@@ -3,15 +3,15 @@ import sys
 import threading
 import time
 import traceback
-import math
-import pandas as pd
-import utils
 
+import pandas as pd
 import pytz
 import yaml
+import math
 
-from ControllerDataManager import ControllerDataManager
+import utils
 from DataManager import DataManager
+from ControllerDataManager import ControllerDataManager
 from NormalSchedule import NormalSchedule
 
 sys.path.insert(0, 'MPC')
@@ -19,24 +19,27 @@ from Advise import Advise
 from ThermalModel import *
 from AverageThermalModel import *
 
+sys.path.insert(0, '../Utils')
+import Debugger
+
 from xbos import get_client
 from xbos.services.hod import HodClient
-from xbos.devices.thermostat import Thermostat
 
 
 
 # TODO set up a moving average for how long it took for action to take place.
 # the main controller
-def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone):
+def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building):
     """
-    :param cfg: 
-    :param advise_cfg: 
-    :param tstats: 
-    :param client: 
-    :param thermal_model: 
-    :param zone: 
+    
+    :param cfg:
+    :param advise_cfg:
+    :param tstats:
+    :param client:
+    :param thermal_model:
+    :param zone:
     :return: boolean, dict. Success Boolean indicates whether writing action has succeeded. Dictionary {cooling_setpoint: float,
-    heating_setpoint: float, override: bool, mode: int} and None if success boolean is flase. 
+    heating_setpoint: float, override: bool, mode: int} and None if success boolean is flase.
     """
 
     # now in UTC time.
@@ -48,6 +51,8 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone):
 
         dataManager = DataManager(cfg, advise_cfg, client, zone, now=now)
         safety_constraints = dataManager.safety_constraints()
+        prices = dataManager.prices()
+        building_setpoints = dataManager.building_setpoints()
 
         # need to set weather predictions for every loop and set current zone temperatures and fit the model given the new data (if possible).
         # NOTE: call setZoneTemperaturesAndFit before setWeahterPredictions
@@ -60,36 +65,36 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone):
         thermal_model.set_weather_predictions(weather)
 
         if (cfg["Pricing"]["DR"] and utils.in_between(now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])).time(),
-                                                utils.get_datetime(cfg["Pricing"]["DR_Start"]),
-                                                utils.get_datetime(cfg["Pricing"]["DR_Finish"]))): #\
-                #or now.weekday() == 4:  # TODO REMOVE ALLWAYS HAVING DR ON FRIDAY WHEN DR SUBSCRIBE IS IMPLEMENTED
+                                                      utils.get_datetime(cfg["Pricing"]["DR_Start"]),
+                                                      utils.get_datetime(cfg["Pricing"]["DR_Finish"]))):  # \
+            # or now.weekday() == 4:  # TODO REMOVE ALLWAYS HAVING DR ON FRIDAY WHEN DR SUBSCRIBE IS IMPLEMENTED
             DR = True
         else:
             DR = False
 
+        adv_start = time.time()
         adv = Advise([zone],  # array because we might use more than one zone. Multiclass approach.
                      now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])),
                      dataManager.preprocess_occ(),
                      [tstat_temperature],
                      thermal_model,
-                     dataManager.prices(),
+                     prices,
                      advise_cfg["Advise"]["General_Lambda"],
                      advise_cfg["Advise"]["DR_Lambda"],
                      DR,
                      cfg["Interval_Length"],
                      advise_cfg["Advise"]["MPCPredictiveHorizon"],
-                     advise_cfg["Advise"]["Print_Graph"],
                      advise_cfg["Advise"]["Heating_Consumption"],
                      advise_cfg["Advise"]["Cooling_Consumption"],
                      advise_cfg["Advise"]["Ventilation_Consumption"],
                      advise_cfg["Advise"]["Thermal_Precision"],
                      advise_cfg["Advise"]["Occupancy_Obs_Len_Addition"],
-                     dataManager.building_setpoints(),
+                     building_setpoints,
                      advise_cfg["Advise"]["Occupancy_Sensors"],
                      safety_constraints)
 
         action = adv.advise()
-
+        adv_end = time.time()
 
     except Exception:
 
@@ -169,11 +174,18 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone):
 
     print("Zone: " + zone + ", action: " + str(p))
 
+    # Plot the MPC graph.
+    if advise_cfg["Advise"]["Print_Graph"]:
+        adv.g_plot(zone)
+
+    # Log the information related to the current MPC
+    Debugger.debug_print(now, building, zone, adv, safety_constraints, prices, building_setpoints, adv_end - adv_start, file=True)
+
     # try to commit the changes to the thermostat, if it doesnt work 10 times in a row ignore and try again later
     for i in range(advise_cfg["Advise"]["Thermostat_Write_Tries"]):
         try:
             # TODO Uncomment
-            # tstat.write(p)
+            #tstat.write(p)
             thermal_model.set_last_action(
                 action)  # TODO Document that this needs to be set after we are sure that writing has succeeded.
             break
@@ -187,14 +199,16 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone):
     return True, p
 
 
+
 class ZoneThread(threading.Thread):
-    def __init__(self, cfg_filename, tstats, zone, client, thermal_model):
+    def __init__(self, cfg_filename, tstats, zone, client, thermal_model, building):
         threading.Thread.__init__(self)
+
         self.cfg_filename = cfg_filename
         self.tstats = tstats
         self.zone = zone
         self.client = client
-
+        self.building = building
         self.thermal_model = thermal_model
 
     def run(self):
@@ -218,7 +232,7 @@ class ZoneThread(threading.Thread):
                 succeeded = False
                 while not succeeded:
                     succeeded, action_data = hvac_control(cfg, advise_cfg, self.tstats, self.client, self.thermal_model,
-                                                          self.zone)
+                                                          self.zone, self.building)
                     if not succeeded:
                         time.sleep(10)
                         if count == advise_cfg["Advise"]["Thermostat_Write_Tries"]:
@@ -239,14 +253,13 @@ class ZoneThread(threading.Thread):
             print datetime.datetime.now()
             print(cfg["Building"]) # TODO Rethink. now every thread will write this.
             # Wait for the next interval.
-            # time.sleep(60. * float(cfg["Interval_Length"]) - (
-            # (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
+            time.sleep(60. * float(cfg["Interval_Length"]) - (
+            (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
 
             # end program if setpoints have been changed. (If not writing to tstat we don't want this)
-            # if action_data is not None and utils.has_setpoint_changed(self.tstats[self.zone], action_data, self.zone):
-            #     print("Ending program for zone %s due to manual setpoint changes. \n" % self.zone)
-            #     return
-
+            if action_data is not None and utils.has_setpoint_changed(self.tstats[self.zone], action_data, self.zone, self.building):
+                print("Ending program for zone %s due to manual setpoint changes. \n" % self.zone)
+                return
 
 
 if __name__ == '__main__':
@@ -261,7 +274,6 @@ if __name__ == '__main__':
     with open(yaml_filename, 'r') as ymlfile:
         cfg = yaml.load(ymlfile)
 
-    # Get client.
     if cfg["Server"]:
         client = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
     else:
@@ -277,24 +289,18 @@ if __name__ == '__main__':
 
     except:
         controller_dataManager = ControllerDataManager(cfg, client)
-        thermal_data = controller_dataManager.thermal_data(days_back=10)
+        thermal_data = controller_dataManager.thermal_data(days_back=20)
         with open("Thermal Data/demo_" + cfg["Building"], "wb") as f:
             pickle.dump(thermal_data, f)
 
-    # TODO Should come from utils
-    def concat_zone_data(thermal_data):
-        """Concatinates all zone data into one big dataframe. Will sort by index. Get rid of all zone_temperature columns.
-        :param thermal_data: {zone: pd.df}
-        :return pd.df without zone_temperature columns"""
-        concat_data = pd.concat(thermal_data.values()).sort_index()
-        filter_columns = ["zone_temperature" not in col for col in concat_data.columns]
-        return concat_data[concat_data.columns[filter_columns]]
+    # Concat zone data to put all data together and filter such that all datapoints have dt != 1
+    building_thermal_data = utils.concat_zone_data(thermal_data)
+    filtered_building_thermal_data = building_thermal_data[building_thermal_data["dt"]!=1]
 
-    building_thermal_data = concat_zone_data(thermal_data)
 
     # TODO INTERVAL SHOULD NOT BE IN config_file.yml, THERE SHOULD BE A DIFFERENT INTERVAL FOR EACH ZONE
     # TODO, NOTE, We are training on the whole building.
-    zone_thermal_models = {zone: AverageMPCThermalModel(zone, building_thermal_data, interval_length=cfg["Interval_Length"],
+    zone_thermal_models = {zone: AverageMPCThermalModel(zone, filtered_building_thermal_data, interval_length=cfg["Interval_Length"],
                                                  thermal_precision=cfg["Thermal_Precision"])
                            for zone, zone_thermal_data in thermal_data.items()}
     print("Trained Thermal Model")
