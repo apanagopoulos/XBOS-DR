@@ -107,7 +107,7 @@ class EVA:
 
         # add the final nodes when algorithm goes past the target prediction time
         if self.get_real_time(from_node.time) >= self.target:
-            self.g.add_node(from_node, usage_cost=0, best_action=None, best_successor=None, discomfort=None, consumption=None)
+            self.g.add_node(from_node, usage_cost=0, best_action=None, best_successor=None, discomfort=[None], consumption=[None])
             return
 
         # create the action set (0 is for do nothing, 1 is for cooling, 2 is for heating)
@@ -150,7 +150,7 @@ class EVA:
             # create node if the new node is not already in graph
             # recursively run shortest path for the new node
             if new_node not in self.g:
-                self.g.add_node(new_node, usage_cost=np.inf, best_action=None, best_successor=None, discomfort=None, consumption=None)
+                self.g.add_node(new_node, usage_cost=np.inf, best_action=None, best_successor=None, discomfort=[None], consumption=[None])
                 self.shortest_path(new_node)
 
             # need to find a way to get the consumption and discomfort values between [0,1]
