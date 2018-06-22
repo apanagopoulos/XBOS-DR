@@ -67,7 +67,7 @@ class EVA:
         self.noZones = noZones
         self.current_time = current_time
         self.l = l
-        self.g = nx.DiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
+        self.g = nx.MultiDiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
         self.interval = interval
         self.root = root
         self.target = self.get_real_time(pred_window * interval)
@@ -261,8 +261,6 @@ class Advise:
 if __name__ == '__main__':
     import sys
 
-    ZONE = "HVAC_Zone_AC-1"
-
     sys.path.insert(0, '..')
     sys.path.insert(0, '../../Utils')
     import Debugger
@@ -276,6 +274,10 @@ if __name__ == '__main__':
     from xbos.devices.thermostat import Thermostat
     import time
 
+    ZONE = "HVAC_Zone_AC-1"
+    building = sys.argv[1]
+    naive_now = datetime.datetime.strptime("2018-06-22 15:20:44", "%Y-%m-%d %H:%M:%S")
+    now =  pytz.timezone("UTC").localize(naive_now)
 
     # TODO check for comfortband height and whether correctly implemented
     # read from config file
@@ -284,7 +286,6 @@ if __name__ == '__main__':
     except:
         sys.exit("Please specify the configuration file as: python2 controller.py config_file.yaml")
 
-    building = sys.argv[1]
 
     with open(yaml_filename, 'r') as ymlfile:
         cfg = yaml.load(ymlfile)
@@ -320,15 +321,9 @@ if __name__ == '__main__':
     print("Trained Thermal Model")
     # --------------------------------------
 
-    hc = HodClient("xbos/hod", client)
-
     with open("../Buildings/" + cfg["Building"] + "/ZoneConfigs/" + ZONE + ".yml", 'r') as ymlfile:
         advise_cfg = yaml.load(ymlfile)
 
-    naive_now = datetime.datetime.strptime("2018-06-22 15:20:44", "%Y-%m-%d %H:%M:%S")
-    now =  pytz.timezone("UTC").localize(naive_now)
-
-    dm = DataManager(cfg, advise_cfg, client, ZONE, now=now)
 
     dataManager = DataManager(cfg, advise_cfg, client, ZONE, now=now)
     safety_constraints = dataManager.safety_constraints()
@@ -357,7 +352,6 @@ if __name__ == '__main__':
                  building_setpoints,
                  advise_cfg["Advise"]["Occupancy_Sensors"],
                  safety_constraints)
-
 
     adv_start = time.time()
     adv.advise()
