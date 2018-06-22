@@ -185,7 +185,7 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building)
     for i in range(advise_cfg["Advise"]["Thermostat_Write_Tries"]):
         try:
             # TODO Uncomment
-            #tstat.write(p)
+            # tstat.write(p)
             thermal_model.set_last_action(
                 action)  # TODO Document that this needs to be set after we are sure that writing has succeeded.
             break
@@ -203,7 +203,6 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building)
 class ZoneThread(threading.Thread):
     def __init__(self, cfg_filename, tstats, zone, client, thermal_model, building):
         threading.Thread.__init__(self)
-
         self.cfg_filename = cfg_filename
         self.tstats = tstats
         self.zone = zone
@@ -253,8 +252,8 @@ class ZoneThread(threading.Thread):
             print datetime.datetime.now()
             print(cfg["Building"]) # TODO Rethink. now every thread will write this.
             # Wait for the next interval.
-            time.sleep(60. * float(cfg["Interval_Length"]) - (
-            (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
+            # time.sleep(60. * float(cfg["Interval_Length"]) - (
+            # (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
 
             # end program if setpoints have been changed. (If not writing to tstat we don't want this)
             if action_data is not None and utils.has_setpoint_changed(self.tstats[self.zone], action_data, self.zone, self.building):
