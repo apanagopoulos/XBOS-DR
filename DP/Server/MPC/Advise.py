@@ -41,7 +41,7 @@ class Node:
 
 
 class EVA:
-    def __init__(self, current_time, l, pred_window, interval, discomfort,
+    def __init__(self, current_time, balance_lambda, pred_window, interval, discomfort,
                  thermal, occupancy, safety, energy, zones, root=Node([75], 0), noZones=1):
         """
         Constructor of the Evaluation Class
@@ -66,7 +66,7 @@ class EVA:
 
         self.noZones = noZones
         self.current_time = current_time
-        self.l = l
+        self.balance_lambda = balance_lambda
         self.g = nx.DiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
         self.interval = interval
         self.root = root
@@ -154,7 +154,7 @@ class EVA:
                 self.shortest_path(new_node)
 
             # need to find a way to get the consumption and discomfort values between [0,1]
-            interval_overall_cost = ((1 - self.l) * (sum(consumption))) + (self.l * (sum(discomfort)))
+            interval_overall_cost = ((1 - self.balance_lambda) * (sum(consumption))) + (self.balance_lambda * (sum(discomfort)))
 
             this_path_cost = self.g.node[new_node]['usage_cost'] + interval_overall_cost
 
@@ -214,7 +214,7 @@ class Advise:
                                    heat=heating_cons, cool=cooling_cons)
 
         Zones_Starting_Temps = zone_temperature
-        self.root = Node(Zones_Starting_Temps, 0)
+        self.root = Node(temps=Zones_Starting_Temps, time=0)
         temp_l = dr_lamda if dr else lamda
 
         print("Lambda being used for zone %s is of value %s" % (zones[0], str(temp_l)))
@@ -222,7 +222,7 @@ class Advise:
         # initialize the shortest path model
         self.advise_unit = EVA(
             current_time=self.current_time,
-            l=temp_l,
+            balance_lambda=temp_l,
             pred_window=predictions_hours * 60 / interval,
             interval=interval,
             discomfort=disc,
