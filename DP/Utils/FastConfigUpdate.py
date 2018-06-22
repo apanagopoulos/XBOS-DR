@@ -4,12 +4,36 @@ import yaml
 # Go to folder where all config files are located
 config_folder_location = "../Server/Buildings/"
 all_dir = os.walk(config_folder_location).next()
-for d in all_dir[1]:
+# Go through all directories in the buildings folder
+for directory in all_dir[1]:
     print("========================")
-    end_dir = config_folder_location + d + "/ZoneConfigs"
+    end_dir = config_folder_location + directory + "/ZoneConfigs"
     if not os.path.isdir(end_dir):
-        print("%s has not ZoneConfigs folder. Moving on to next folder" % (config_folder_location + d))
+        print("%s has not ZoneConfigs folder. Moving on to next folder" % (config_folder_location + directory))
         continue
+
+    building_config_name = config_folder_location + directory + "/" + directory + ".yml"
+    if not os.path.isfile(building_config_name):
+        print("Warning: directory %s has no building config %s." % (directory, directory+".yml"))
+
+    # ===== Work on building config here =====
+    print("Working on building config file %s" % directory)
+    # open config
+    with open(building_config_name, 'r') as f:
+        building_config = yaml.load(f)
+
+    # Get ready for DR-event so we can run on server
+    building_config["Server"] = True
+
+    # Setting DR start and end
+    building_config["Pricing"]["DR_Start"] = "14:00"
+    building_config["Pricing"]["DR_Finish"] = "18:00"
+
+    # write to config
+    with open(building_config_name, 'wb') as f:
+        yaml.dump(building_config, f)
+
+    # ===== End building config =====
 
     files = os.walk(end_dir).next()[2]
     print("in dir: ", end_dir)
@@ -24,10 +48,16 @@ for d in all_dir[1]:
 
         # ==============================
         # Change variables in config as needed
-        # print(config["Advise"]["DR_Lambda"])
-        # print(config["Advise"]["Lambda"])
+
+        # Set lambdas
         config["Advise"]["DR_Lambda"] = 0.7
         config["Advise"]["General_Lambda"] = 0.995
+
+        # Decide whether to run MPC.
+        if "Cooling_Consumption_Stage_2" in config["Advise"]:
+            config["Advise"]["MPC"] = False
+            print("%s zone will not run MPC." % f)
+
         # ==============================
 
         # Writes the changes the the file

@@ -57,7 +57,7 @@ Advise:
   Cooling_Consumption: 1.93
   Cooling_Consumption_Stage_2: 1.93
   DR_Lambda: 0.7
-  General_Lambda: 0.7
+  General_Lambda: 0.995
   Heating_Consumption: 0.075
   Hysterisis: 1.0
   Lambda: 0.7
