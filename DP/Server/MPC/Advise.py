@@ -67,7 +67,7 @@ class EVA:
         self.noZones = noZones
         self.current_time = current_time
         self.l = l
-        self.g = nx.MultiDiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
+        self.g = nx.DiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
         self.interval = interval
         self.root = root
         self.target = self.get_real_time(pred_window * interval)
@@ -330,7 +330,7 @@ if __name__ == '__main__':
     prices = dataManager.prices()
     building_setpoints = dataManager.building_setpoints()
 
-    temperature = 67.3
+    temperature = 67.8
     DR = False
 
     adv = Advise([ZONE],  # array because we might use more than one zone. Multiclass approach.
@@ -358,4 +358,5 @@ if __name__ == '__main__':
     adv_end = time.time()
 
     Debugger.debug_print(now, building, ZONE, adv, safety_constraints, prices, building_setpoints, adv_end - adv_start, file=False)
+    adv.g_plot(ZONE)
 
