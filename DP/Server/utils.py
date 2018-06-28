@@ -1,6 +1,7 @@
 #this is the plotter for the MPC graph
 
 import pandas as pd
+import numpy as np
 import datetime
 
 from xbos.devices.thermostat import Thermostat
@@ -79,6 +80,44 @@ def as_pandas(result):
 
     df = df.set_index('Time')
     return df
+
+
+# Heating
+def f1(row):
+    """
+    helper function to format the thermal model dataframe
+    """
+    if row['action'] == 1.:
+        val = 1
+    else:
+        val = 0
+    return val
+
+
+# if state is 2 we are doing cooling
+def f2(row):
+    """
+    helper function to format the thermal model dataframe
+    """
+    if row['action'] == 2.:
+        val = 1
+    else:
+        val = 0
+    return val
+
+
+def f3(row):
+    """
+    helper function to format the thermal model dataframe
+    """
+    if 0 < row['a'] <= 1:
+        return 1
+    elif 1 < row['a'] <= 2:
+        return 2
+    elif np.isnan(row['a']):
+        return row['a']
+    else:
+        return 0
 
 # ============ THERMOSTAT FUNCTIONS ============
 

@@ -118,7 +118,9 @@ class ThermalModel(BaseEstimator, RegressorMixin):
             # want to know for what data it didn't work
             if not consistency_flag:
                 print("Inconsistency for following parameters:")
-                print(params)
+                print("No Action: %f " % no_action_average)
+                print("Heating: %f " % heating_average)
+                print("Cooling: %f " % cooling_average)
 
             return consistency_flag
         assert average_quality_check(*self._params)
