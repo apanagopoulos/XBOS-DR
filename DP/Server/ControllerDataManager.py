@@ -168,6 +168,7 @@ class ControllerDataManager:
                                                       'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
                                                       'WindowSize': str(self.window_size) + 'min',
                                                       'Aligned': True}})
+            print(dfs)
             df = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
 
             zone_thermal_data[zone] = df.rename(columns={dict["tstat_temperature"]: 't_in', dict["tstat_action"]: 'a'})
@@ -234,15 +235,19 @@ class ControllerDataManager:
         # This is accomplished by taking the difference of two consecutive rows and checking if their difference is 0 meaning that they had the same action.
 
         # following adds the fields "time", "dt" etc such that we accumulate all values where we have consecutively the same action.
-        # maximally we group terms of total self.interval
+        # maximally we group terms of total self.interval. To get self.interval of data, we will actually look at
+        # self.interval + 1 data-points. | -- 1 min -- | -- 1 min -- | -- 1 min -- | will only give us a span of two
+        # minutes because we can only look at the Tin corresponding to the start of the 1 min windows. So, at the
+        # start of the third window, only 2 min have passed. (In fact, MDAL gives us the mean of the windows, but we
+        # can just assume that it is the starting temperature, the logic stays the same.)
 
         # NOTE: Only dropping nan value during gathering stage and after that. Before then not doing it because
-        # we want to keep the times contigious
+        # we want to keep the times contigious.
         data_list = []
         for j in thermal_model_data.change_of_action.unique():
             for i in range(0, thermal_model_data[thermal_model_data['change_of_action'] == j].shape[0],
-                           self.interval):
-                for dfs in [thermal_model_data[thermal_model_data['change_of_action'] == j][i:i + self.interval]]:
+                           self.interval + 1):
+                for dfs in [thermal_model_data[thermal_model_data['change_of_action'] == j][i:i + self.interval + 1]]:
                     # we only look at intervals where the last and first value for T_in are not Nan.
                     dfs.dropna(subset=["t_in"])
                     zone_col_filter = ["zone_temperature_" in col for col in dfs.columns]
@@ -255,7 +260,7 @@ class ControllerDataManager:
                                       't_max': np.max(dfs['t_in']),
                                       # needed to add windowsize for last timestep.
                                       # TODO check dt if correct.
-                                      'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60 + self.window_size,
+                                      'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
                                       't_out': dfs['t_out'].mean(),  # mean does not count Nan values
                                       'action': dfs['a'][0]}  # TODO document why we expect no nan in a block.
 
@@ -267,8 +272,9 @@ class ControllerDataManager:
         thermal_model_data = pd.DataFrame(data_list).set_index('time')
         thermal_model_data['a1'] = thermal_model_data.apply(utils.f1, axis=1)
         thermal_model_data['a2'] = thermal_model_data.apply(utils.f2, axis=1)
-
+        print("Before drop", thermal_model_data.shape)
         thermal_model_data = thermal_model_data.dropna()  # final drop. Mostly if the whole interval for the zones or t_out were nan.
+        print("After drop", thermal_model_data.shape)
 
         return thermal_model_data
 
@@ -390,7 +396,7 @@ if __name__ == '__main__':
     # because if two zones have the same temperature, but they differ in readings by 5 degrees, then there is no coefficient which can
     # make the temperature delta zero when they are actually same.
 
-    # Update to make the timezone more friendly. for now everything in UTC time.
+    # Update to make the timezone more friendly. for now everything in UTC time except the returned data.
 
     # TODO self.now is misleading. Will only look at when the datamanger was created. Should be updated?
 
