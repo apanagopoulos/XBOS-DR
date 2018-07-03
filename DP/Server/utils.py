@@ -3,6 +3,7 @@
 import pandas as pd
 import numpy as np
 import datetime
+import pytz
 
 from xbos.devices.thermostat import Thermostat
 
@@ -28,8 +29,12 @@ except ImportError:
 '''
 Utility functions
 '''
-# ============ DATE FORMATTING ============
+# ============ DATE FUNCTIONS ============
 
+def get_utc_now():
+    """Gets current time in utc time.
+    :return Datetime in utctime zone"""
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC"))
 
 def in_between(now, start, end):
     """Finds whether now is between start and end. Takes care of cases such as start=11:00pm and end=1:00am 
@@ -47,13 +52,106 @@ def in_between(now, start, end):
         return True
 
 
-def get_datetime(date_string):
+def get_time_datetime(time_string):
     """Gets datetime from string with format HH:MM.
     :param date_string: string of format HH:MM
     :returns datetime.time() object with no associated timzone. """
-    return datetime.datetime.strptime(date_string, "%H:%M").time()
+    return datetime.datetime.strptime(time_string, "%H:%M").time()
+
+
+def get_mdal_string_to_datetime(date_string):
+    """Gets datetime from string with format Year-Month-Day Hour:Minute:Second UTC. Note, string should be for utc
+    time.
+    :param date_string: string of format Year-Month-Day Hour:Minute:Second UTC.
+    :returns datetime.time() object in UTC time. """
+    return datetime.datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S %Z").replace(tzinfo=pytz.timezone("UTC"))
+
+def get_mdal_datetime_to_string(date_object):
+    """Gets string from datetime object. In UTC Time.
+    :param date_object
+    :returns '%Y-%m-%d %H:%M:%S UTC' """
+    return date_object.strftime('%Y-%m-%d %H:%M:%S') + ' UTC'
+
 
 # ============ DATA FUNCTIONS ============
+
+def get_mdal_data(mdal_client, query):
+    """Gets mdal data. Necessary method because if a too long time frame is queried, mdal does not return the data.
+    :param mdal_client: mdal object to query data.
+    :param query: mdal query
+    :return pd.df with composition as columns. Timeseries in UTC time."""
+    start = get_mdal_string_to_datetime(query["Time"]["T0"])
+    end = get_mdal_string_to_datetime(query["Time"]["T1"])
+    time_frame = end - start
+
+    # get windowsize
+    str_window = query["Time"]["WindowSize"]
+    assert str_window[-3:] == "min"
+    WINDOW_SIZE = datetime.timedelta(minutes=int(str_window[:-3]))
+
+    if time_frame < WINDOW_SIZE:
+        raise Exception("WindowSize is less than the time interval for which data is requested.")
+
+    # To get logarithmic runtime we take splits which are powers of two.
+    max_interval = datetime.timedelta(hours=12)  # the maximum interval length in which to split the data.
+    max_num_splits = int(time_frame.total_seconds()//max_interval.total_seconds())
+    all_splits = [1]
+    for _ in range(2, max_num_splits):
+        power_split = all_splits[-1] * 2
+        if power_split > max_num_splits:
+            break
+        all_splits.append(power_split)
+
+    received_all_data = False
+    outside_data = []
+    # start loop to get data in time intervals of logarithmically decreasing size. This will hopefully find the
+    # spot at which mdal returns data.
+    for num_splits in all_splits:
+        outside_data = []
+        pre_look_ahead = time_frame / num_splits
+
+        # to round down to nearest window size multiple
+        num_window_in_pre_look = pre_look_ahead.total_seconds()//WINDOW_SIZE.total_seconds()
+        look_ahead = datetime.timedelta(seconds=WINDOW_SIZE.total_seconds() * num_window_in_pre_look)
+
+        print("Attempting to get data in %f day intervals." % (look_ahead.total_seconds()/(60*60*24)))
+
+        temp_start = start
+        temp_end = temp_start + look_ahead
+
+        while temp_end <= end:
+            query["Time"]["T0"] = get_mdal_datetime_to_string(temp_start)
+            query["Time"]["T1"] = get_mdal_datetime_to_string(temp_end)
+            mdal_outside_data = mdal_client.do_query(query, tz="UTC")
+            if mdal_outside_data == {}:
+                print("Attempt failed.")
+                received_all_data = False
+                break
+            else:
+                outside_data.append(mdal_outside_data["df"])
+
+                # advance temp_start and temp_end
+                temp_start = temp_end + WINDOW_SIZE
+                temp_end = temp_start + look_ahead
+
+                # to get rest of data if look_ahead is not exact mutliple of time_between
+                if temp_start < end < temp_end:
+                    temp_end = end
+
+                # To know that we received all data.
+                if end < temp_start:
+                    received_all_data = True
+
+        # stop if we got the data
+        if received_all_data:
+            break
+
+
+    if not received_all_data:
+        raise Exception("WARNING: Unable to get data form MDAL.")
+
+    return pd.concat(outside_data)
+
 
 
 def concat_zone_data(thermal_data):
@@ -281,3 +379,18 @@ def plotly_figure(G, path=None):
                         xaxis=go.XAxis(showgrid=False, zeroline=False, showticklabels=False),
                         yaxis=go.YAxis(showgrid=False, zeroline=False, showticklabels=False)))
     return fig
+
+if __name__ == '__main__':
+    print get_utc_now()
+
+    # ('%Y-%m-%d %H:%M:%S') + ' UTC'
+
+    s = get_mdal_string_to_datetime("2018-09-01 12:32:12 UTC")
+
+    e = get_mdal_string_to_datetime("2018-09-10 21:12:51 UTC")
+
+    d = e - s
+    print(d)
+    print(d/2)
+
+

@@ -23,37 +23,54 @@ class ControllerDataManager:
     Time is always in UTC
     """
 
-    def __init__(self, controller_cfg, client,
-                 now=None):
+    def __init__(self, building_cfg, client):
+        assert building_cfg
 
-        self.controller_cfg = controller_cfg
-        self.pytz_timezone = pytz.timezone(controller_cfg["Pytz_Timezone"])
-        self.interval = controller_cfg["Interval_Length"]
-
-
-        if now is None:
-            now = datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC"))
-        self.now = now
-
+        self.building_cfg = building_cfg
+        self.building = building_cfg["Building"]
+        self.interval = building_cfg["Interval_Length"]
         self.client = client
 
-        self.window_size = 1  # minutes. TODO should come from config. Has to be a multiple of 15 for weather getting.
-        self.building = controller_cfg["Building"]
-        self.hod_client = HodClient("xbos/hod", self.client)  # TODO hopefully i could incorporate this into the query.
+        self.window_size = 1  # minutes. TODO should come from config.
+        self.hod_client = HodClient("xbos/hod", self.client)  # TODO Potentially could incorporate this into MDAL query.
+
+    def _preprocess_outside_data(self, outside_data):
+        """
+        
+        :param outside_data: (list) of pd.df with col ["t_out"] for each weather station. 
+        :return: pd.df with col ["t_out"]
+        """
+
+        # since the archiver had a bug while storing weather.gov data, nan values were stored as 32. We will
+        # replace any 32 values with Nan. Since we usually have more than one weather station, we can then take the
+        # average across those to compensate. If no other weather stations, then issue a warning that
+        # we might be getting rid of real data and we won't be able to recover through the mean.
+        if len(outside_data) == 1:
+            print("WARNING: Only one weather station for selected region. We need to replace 32 values with Nan due to "
+                  "past inconsistencies, but not enough data to compensate for the lost data by taking mean.")
+
+        for i in range(len(outside_data)):
+            temp_data = outside_data[i]["t_out"].apply(lambda t: np.nan if t == 32 else t)
+            outside_data[i]["t_out"] = temp_data
+
+        # Note: Assuming same index for all weather station data returned by mdal
+        final_outside_data = pd.concat(outside_data, axis=1).mean(axis=1)
+        final_outside_data = pd.DataFrame(final_outside_data, columns=["t_out"])
+
+        # outside temperature may contain nan values.
+        # Hence, we interpolate values linearly,
+        # since outside temperature does not need to be as accurate as inside data.
+        final_outside_data = final_outside_data.interpolate()
+
+        return final_outside_data
 
     def _get_outside_data(self, start=None, end=None):
         # TODO update docstring
         """Get outside temperature for thermal model.
         :param start: (datetime) time to start. in UTC time.
         :param end: (datetime) time to end. in UTC time.
-        :return outside temperature has freq of 15 min and
+        :return ({uuid: (pd.df) (col: "t_out) outside_data})  outside temperature has freq of 15 min and
         pd.df columns["tin", "a"] has freq of self.window_size. """
-        # TODO, why do we have this. Should only be for get datetime method ?
-        if end is None:
-            end = self.now
-        if start is None:
-            start = end - timedelta(hours=10)
-
 
         outside_temperature_query = """SELECT ?weather_station ?uuid FROM %s WHERE {
                                     ?weather_station rdf:type brick:Weather_Temperature_Sensor.
@@ -63,22 +80,26 @@ class ControllerDataManager:
         # get outside temperature data
         # TODO UPDATE OUTSIDE TEMPERATURE STUFF
         # TODO for now taking all weather stations and preprocessing it. Should be determined based on metadata.
-        outside_temperature_query_data = self.hod_client.do_query(outside_temperature_query % self.building)["Rows"][0]
+        outside_temperature_query_data = self.hod_client.do_query(outside_temperature_query % self.building)["Rows"]
 
-        # Get data from MDAL
-        mdal_client = mdal.MDALClient("xbos/mdal", client=self.client)
-        outside_temperature_data = mdal_client.do_query({
-            'Composition': [outside_temperature_query_data["?uuid"]],
-            # uuid from Mr.Plotter. should use outside_temperature_query_data["?uuid"],
-            'Selectors': [mdal.MEAN]
-            , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                       'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                       'WindowSize': str(15) + 'min',
-                       # TODO document that we are getting 15 min intervals because then we get less nan values.
-                       'Aligned': True}})
+        outside_temperature_data = {}
+        for weather_station in outside_temperature_query_data:
+            # Get data from MDAL
+            mdal_client = mdal.MDALClient("xbos/mdal", client=self.client)
+            mdal_query = {
+                'Composition': [weather_station["?uuid"]],
+                # uuid from Mr.Plotter. should use outside_temperature_query_data["?uuid"],
+                'Selectors': [mdal.MEAN]
+                , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                           'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                           'WindowSize': str(15) + 'min',
+                           # TODO document that we are getting 15 min intervals because then we get fewer nan values.
+                           'Aligned': True}}
 
-        outside_temperature_data = outside_temperature_data["df"]
-        outside_temperature_data.columns = ["t_out"]
+            mdal_outside_data = utils.get_mdal_data(mdal_client, mdal_query)
+
+            mdal_outside_data.columns = ["t_out"]
+            outside_temperature_data[weather_station["?uuid"]] = mdal_outside_data
 
         return outside_temperature_data
 
@@ -143,6 +164,7 @@ class ControllerDataManager:
                           };"""
         # End of FIX - delete when Brick is fixed
 
+        # get query data
         temp_thermostat_query_data = {
             "tstat_temperature": self.hod_client.do_query(thermostat_temperature_query % self.building)["Rows"],
             "tstat_action": self.hod_client.do_query(thermostat_status_query % self.building)["Rows"],
@@ -161,16 +183,16 @@ class ControllerDataManager:
         mdal_client = mdal.MDALClient("xbos/mdal", client=self.client)
         zone_thermal_data = {}
         for zone, dict in thermostat_query_data.items():
-            # get the thermostat data
-            dfs = mdal_client.do_query({'Composition': [dict["tstat_temperature"], dict["tstat_action"]],
+
+            mdal_query = {'Composition': [dict["tstat_temperature"], dict["tstat_action"]],
                                         'Selectors': [mdal.MEAN, mdal.MEAN]
                                            , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
                                                       'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
                                                       'WindowSize': str(self.window_size) + 'min',
-                                                      'Aligned': True}})
-            print(dfs)
-            df = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
+                                                      'Aligned': True}}
 
+            # get the thermostat data
+            df = utils.get_mdal_data(mdal_client, mdal_query)
             zone_thermal_data[zone] = df.rename(columns={dict["tstat_temperature"]: 't_in', dict["tstat_action"]: 'a'})
 
         # TODO Note: The timezone for the data relies to be converted by MDAL to the local timezone.
@@ -262,7 +284,7 @@ class ControllerDataManager:
                                       # TODO check dt if correct.
                                       'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
                                       't_out': dfs['t_out'].mean(),  # mean does not count Nan values
-                                      'action': dfs['a'][0]}  # TODO document why we expect no nan in a block.
+                                      'action': dfs['a'][0]}  # TODO document why we expect no nan in a block. There actually is a ton of nan
 
                     for temperature_zone in dfs.columns[zone_col_filter]:
                         # mean does not count Nan values
@@ -272,7 +294,7 @@ class ControllerDataManager:
         thermal_model_data = pd.DataFrame(data_list).set_index('time')
         thermal_model_data['a1'] = thermal_model_data.apply(utils.f1, axis=1)
         thermal_model_data['a2'] = thermal_model_data.apply(utils.f2, axis=1)
-        print("Before drop", thermal_model_data.shape)
+        print("Before drop", thermal_model_data.shape) # TODO turns out we drop a lot of data. check why.
         thermal_model_data = thermal_model_data.dropna()  # final drop. Mostly if the whole interval for the zones or t_out were nan.
         print("After drop", thermal_model_data.shape)
 
@@ -302,11 +324,12 @@ class ControllerDataManager:
             thermal_model_data = thermal_model_data.rename(columns={"zone_temperature_" + zone: "t_in"})
             # thermal_model_data['a'] = thermal_model_data.apply(utils.f3, axis=1)  # TODO if we get 0.5 the heating happend for half the time.
 
-            # Assumption:
+            # NOTE:
             # The dataframe will have nan values because outside_temperature does not have same frequency as zone_data.
-            # Hence, we fill with last known value to assume a constant temperature throughout intervals.
-            # TODO interpolate the temperatures (also for forecasting reports).
-            thermal_model_data["t_out"] = thermal_model_data["t_out"].fillna(method="pad")
+            # Hence, we interpolate values linearly,
+            # since outside temperature does not need to be as accurate as inside data.
+            # TODO interpolate the temperatures also for forecasting reports if needed.
+            thermal_model_data["t_out"] = thermal_model_data["t_out"].interpolate()
 
             # From here on preprocessing data. Concatinating all time contigious datapoints which have the same action.
             if evaluate_preprocess:
@@ -330,10 +353,12 @@ class ControllerDataManager:
                  a1 is whether heating and a2 whether cooling.
         """
         if end is None:
-            end = self.now
+            end = utils.get_utc_now()
         if start is None:
             start = end - timedelta(days=days_back)
         z, o = self._get_inside_data(start, end), self._get_outside_data(start, end)
+        # Take mean of all weather stations.
+        o = self._preprocess_outside_data(o.values())
         print("Received Thermal Data from MDAL.")
         return self._preprocess_thermal_data(z, o, evaluate_preprocess)
 
@@ -371,11 +396,16 @@ if __name__ == '__main__':
     dataManager = ControllerDataManager(cfg, c)
 
 
-    o = dataManager._get_outside_data(now-datetime.timedelta(days=20), now)
-    o.dropna()
-    print("shape of outside data", o.shape)
-    print("number of 32 temperatures", (o["t_out"] == 32).sum())
-    # t = dataManager.thermal_data(days_back=20)
+    # o = dataManager._get_inside_data(now-datetime.timedelta(days=200), now)
+    # zo = o.values()[0]
+    # print zo.iloc[zo.shape[0]/2 - 5:]
+    # print(o)
+    # print(dataManager._preprocess_outside_data(o.values()))
+    # o.dropna()
+
+    # print("shape of outside data", o.shape)
+    # print("number of 32 temperatures", (o["t_out"] == 32).sum())
+    t = dataManager.thermal_data(days_back=50)
 
     # print(t)
 
