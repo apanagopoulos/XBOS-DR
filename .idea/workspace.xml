@@ -2,8 +2,23 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="3cd4977d-35f2-4e6f-a3e1-915a460e5d1c" name="Default" comment="Added building print for each thread.">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/DP/Server/ControllerDataManager.py" afterPath="$PROJECT_DIR$/DP/Server/ControllerDataManager.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/DP/Server/controller.py" afterPath="$PROJECT_DIR$/DP/Server/controller.py" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalDiagnostics.py" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_Animal_shelter_normal_model.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_Animal_shelter_normal_model.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_HVAC_Zone_Large_Room_all_zone_model.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_HVAC_Zone_Large_Room_all_zone_model.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_HVAC_Zone_Large_Room_single_zone_model.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_HVAC_Zone_Large_Room_single_zone_model.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_average.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_average.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_average_adding.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_average_adding.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_average_all.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_average_all.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_average_no_action_scaling.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_average_no_action_scaling.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_average_no_scaleing.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_average_no_scaleing.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_cooling_action.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_cooling_action.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_cross_eval__average_all.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_cross_eval__average_all.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_heating_action.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_heating_action.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_model.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_model.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_no_action.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_no_action.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_no_action_no_scaling.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_no_action_no_scaling.yml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_orinda-community-center_action.yml" afterPath="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_orinda-community-center_action.yml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -49,23 +64,21 @@
   <component name="ExecutionTargetManager" SELECTED_TARGET="default_target" />
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="ControllerDataManager.py" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/DP/Server/ControllerDataManager.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="5970">
-              <caret line="398" column="36" lean-forward="false" selection-start-line="398" selection-start-column="36" selection-end-line="398" selection-end-column="36" />
-              <folding>
-                <element signature="e#0#15#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
       <file leaf-file-name="north-berkeley-senior-center.yml" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/DP/Server/Buildings/north-berkeley-senior-center/north-berkeley-senior-center.yml">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="0">
               <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="ThermalDiagnostics.py" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalDiagnostics.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="350">
+              <caret line="327" column="47" lean-forward="false" selection-start-line="327" selection-start-column="47" selection-end-line="327" selection-end-column="47" />
               <folding />
             </state>
           </provider>
@@ -84,8 +97,8 @@
       <file leaf-file-name="utils.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/DP/Server/utils.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="1155">
-              <caret line="77" column="18" lean-forward="false" selection-start-line="77" selection-start-column="18" selection-end-line="77" selection-end-column="18" />
+            <state relative-caret-position="463">
+              <caret line="381" column="0" lean-forward="true" selection-start-line="381" selection-start-column="0" selection-end-line="393" selection-end-column="14" />
               <folding>
                 <element signature="e#40#59#0" expanded="true" />
               </folding>
@@ -197,8 +210,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/DP/Server/Buildings/ciee/ZoneConfigs/NorthZone.yml" />
-        <option value="$PROJECT_DIR$/DP/Server/Buildings/ciee/ZoneConfigs/EastZone.yml" />
         <option value="$PROJECT_DIR$/DP/Server/Buildings/ciee/ZoneConfigs/CentralZone.yml" />
         <option value="$PROJECT_DIR$/DP/Server/Buildings/ciee/ZoneConfigs/HVAC_Zone_Southzone.yml" />
         <option value="$PROJECT_DIR$/DP/Server/Buildings/ciee/ZoneConfigs/HVAC_Zone_Centralzone.yml" />
@@ -248,6 +259,8 @@
         <option value="$PROJECT_DIR$/DP/Server/utils.py" />
         <option value="$PROJECT_DIR$/DP/Server/ControllerDataManager.py" />
         <option value="$PROJECT_DIR$/DP/Server/controller.py" />
+        <option value="$PROJECT_DIR$/DP/Server/ThermalDiagnostics.py" />
+        <option value="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalDiagnostics.py" />
       </list>
     </option>
   </component>
@@ -372,6 +385,28 @@
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
             <PATH_ELEMENT>
+              <option name="myItemId" value="iPythonNotebooks" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+          </PATH>
+          <PATH>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="XBOS-DR" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.ProjectViewProjectNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="XBOS-DR" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="DP" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="Server" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
               <option name="myItemId" value="Buildings" />
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
@@ -390,19 +425,19 @@
     <property name="Git.Branch.Popup.ShowAllRemotes" value="true" />
   </component>
   <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data" />
+      <recent name="$PROJECT_DIR$/DP/Server/iPythonNotebooks" />
+      <recent name="$PROJECT_DIR$/DP/Server/iPythonNotebooks/Eval_data" />
+      <recent name="$PROJECT_DIR$/DP/Server/Buildings/ciee" />
+      <recent name="$PROJECT_DIR$/DP/Server/Buildings" />
+    </key>
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/DP/Server/PolicyEvaluations" />
       <recent name="$PROJECT_DIR$/DP/Server/MPC" />
       <recent name="$PROJECT_DIR$/DP/PolicyEvaluations" />
       <recent name="$PROJECT_DIR$/DP" />
       <recent name="$PROJECT_DIR$/DP/Server/ZoneConfigs" />
-    </key>
-    <key name="MoveFile.RECENT_KEYS">
-      <recent name="$PROJECT_DIR$/DP/Server/iPythonNotebooks/Eval_data" />
-      <recent name="$PROJECT_DIR$/DP/Server/iPythonNotebooks" />
-      <recent name="$PROJECT_DIR$/DP/Server/Buildings/ciee" />
-      <recent name="$PROJECT_DIR$/DP/Server/Buildings" />
-      <recent name="$PROJECT_DIR$/DP/Server/MPC" />
     </key>
   </component>
   <component name="RunDashboard">
@@ -417,7 +452,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Python.controllerDataManager">
+  <component name="RunManager" selected="Python.Diagnositcs">
     <configuration default="false" name="NormalSchedule" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
@@ -615,14 +650,33 @@
       <option name="EMULATE_TERMINAL" value="false" />
       <method />
     </configuration>
-    <list size="7">
+    <configuration default="false" name="Diagnositcs" type="PythonConfigurationType" factoryName="Python">
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="$PROJECT_DIR$/../.venv-bets/bin/python" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/DP/Server/iPythonNotebooks" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <module name="XBOS-DR" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalDiagnostics.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <method />
+    </configuration>
+    <list size="8">
       <item index="0" class="java.lang.String" itemvalue="Python.main" />
       <item index="1" class="java.lang.String" itemvalue="Python.controller" />
-      <item index="2" class="java.lang.String" itemvalue="Python.NormalSchedule" />
-      <item index="3" class="java.lang.String" itemvalue="Python.ThermalModel" />
-      <item index="4" class="java.lang.String" itemvalue="Python.controllerDataManager" />
-      <item index="5" class="java.lang.String" itemvalue="Python.Advise" />
-      <item index="6" class="java.lang.String" itemvalue="Python.utils" />
+      <item index="2" class="java.lang.String" itemvalue="Python.Diagnositcs" />
+      <item index="3" class="java.lang.String" itemvalue="Python.NormalSchedule" />
+      <item index="4" class="java.lang.String" itemvalue="Python.ThermalModel" />
+      <item index="5" class="java.lang.String" itemvalue="Python.controllerDataManager" />
+      <item index="6" class="java.lang.String" itemvalue="Python.Advise" />
+      <item index="7" class="java.lang.String" itemvalue="Python.utils" />
     </list>
     <recent_temporary>
       <list size="5">
@@ -895,11 +949,11 @@
     <frame x="0" y="0" width="1440" height="900" extended-state="0" />
     <editor active="true" />
     <layout>
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.35347223" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.35336193" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.1852286" sideWeight="0.50555557" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Find" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32942554" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
-      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.13373494" sideWeight="0.49444443" order="2" side_tool="false" content_ui="tabs" />
+      <window_info id="Run" active="true" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.44698796" sideWeight="0.49444443" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32942554" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Python Console" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3200469" sideWeight="0.5" order="8" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
@@ -1024,35 +1078,28 @@
     <watches-manager />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_no_action.yml">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="293">
-          <caret line="28" column="31" lean-forward="false" selection-start-line="28" selection-start-column="31" selection-end-line="28" selection-end-column="31" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_average_all.yml">
+    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_average_all.yml">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="413">
           <caret line="37" column="30" lean-forward="true" selection-start-line="37" selection-start-column="12" selection-end-line="37" selection-end-column="30" />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_model.yml">
+    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_model.yml">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="465">
           <caret line="31" column="19" lean-forward="false" selection-start-line="31" selection-start-column="19" selection-end-line="31" selection-end-column="19" />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_average.yml">
+    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_average.yml">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="465">
           <caret line="31" column="31" lean-forward="false" selection-start-line="31" selection-start-column="14" selection-end-line="31" selection-end-column="31" />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_no_action_no_scaling.yml">
+    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_no_action_no_scaling.yml">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="420">
           <caret line="28" column="30" lean-forward="false" selection-start-line="28" selection-start-column="12" selection-end-line="28" selection-end-column="30" />
@@ -1078,7 +1125,7 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/thermal_model_avenal-animal-shelter_average_no_action_scaling.yml">
+    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalModel_eval_data/thermal_model_avenal-animal-shelter_average_no_action_scaling.yml">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
@@ -1290,14 +1337,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/DP/Server/Buildings/north-berkeley-senior-center/north-berkeley-senior-center.yml">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="0">
-          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/DP/Server/Buildings/north-berkeley-senior-center/ZoneConfigs/HVAC_Zone_AC-1.yml">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="795">
@@ -1345,16 +1384,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/DP/Server/utils.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1155">
-          <caret line="77" column="18" lean-forward="false" selection-start-line="77" selection-start-column="18" selection-end-line="77" selection-end-column="18" />
-          <folding>
-            <element signature="e#40#59#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/DP/Server/ThermalDataCollector.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
@@ -1369,9 +1398,33 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="5970">
           <caret line="398" column="36" lean-forward="false" selection-start-line="398" selection-start-column="36" selection-end-line="398" selection-end-column="36" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/DP/Server/Buildings/north-berkeley-senior-center/north-berkeley-senior-center.yml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="0">
+          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/DP/Server/utils.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="463">
+          <caret line="381" column="0" lean-forward="true" selection-start-line="381" selection-start-column="0" selection-end-line="393" selection-end-column="14" />
           <folding>
-            <element signature="e#0#15#0" expanded="true" />
+            <element signature="e#40#59#0" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/DP/Server/iPythonNotebooks/ThermalDiagnostics.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="350">
+          <caret line="327" column="47" lean-forward="false" selection-start-line="327" selection-start-column="47" selection-end-line="327" selection-end-column="47" />
+          <folding />
         </state>
       </provider>
     </entry>
