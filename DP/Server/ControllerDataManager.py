@@ -24,8 +24,11 @@ class ControllerDataManager:
     """
 
     def __init__(self, building_cfg, client):
-        assert building_cfg
-
+        """
+        
+        :param building_cfg: A dictionary which should include data for keys "Building" and "Interval_Length"
+        :param client: An xbos client.
+        """
         self.building_cfg = building_cfg
         self.building = building_cfg["Building"]
         self.interval = building_cfg["Interval_Length"]
@@ -50,7 +53,7 @@ class ControllerDataManager:
                   "past inconsistencies, but not enough data to compensate for the lost data by taking mean.")
 
         for i in range(len(outside_data)):
-            temp_data = outside_data[i]["t_out"].apply(lambda t: np.nan if t == 32 else t)
+            temp_data = outside_data[i]["t_out"].apply(lambda t: np.nan if t == 32 else t) # TODO this only works for fahrenheit now.
             outside_data[i]["t_out"] = temp_data
 
         # Note: Assuming same index for all weather station data returned by mdal
@@ -195,7 +198,6 @@ class ControllerDataManager:
             df = utils.get_mdal_data(mdal_client, mdal_query)
             zone_thermal_data[zone] = df.rename(columns={dict["tstat_temperature"]: 't_in', dict["tstat_action"]: 'a'})
 
-        # TODO Note: The timezone for the data relies to be converted by MDAL to the local timezone.
         return zone_thermal_data
 
     def _preprocess_zone_thermal_data(self, thermal_model_data):
@@ -210,26 +212,29 @@ class ControllerDataManager:
         # This is accomplished by taking the difference of two consecutive rows and checking if their difference is 0 meaning that they had the same action.
 
         # following adds the fields "time", "dt" etc such that we accumulate all values where we have consecutively the same action.
-        # maximally we group terms of total self.interval
+        # maximally we group terms of total self.interval. To get self.interval of data, we will actually look at
+        # self.interval + 1 data-points. | -- 1 min -- | -- 1 min -- | -- 1 min -- | will only give us a span of two
+        # minutes because we can only look at the Tin corresponding to the start of the 1 min windows. So, at the
+        # start of the third window, only 2 min have passed. (In fact, MDAL gives us the mean of the windows, but we
+        # can just assume that it is the starting temperature, the logic stays the same.)
 
         # NOTE: Only dropping nan value during gathering stage and after that. Before then not doing it because
-        # we want to keep the times contigious
+        # we want to keep the times contigious.
         data_list = []
         for j in thermal_model_data.change_of_action.unique():
             for i in range(0, thermal_model_data[thermal_model_data['change_of_action'] == j].shape[0],
-                           self.interval):
-                for dfs in [thermal_model_data[thermal_model_data['change_of_action'] == j][i:i + self.interval]]:
+                           self.interval + 1):
+                for dfs in [thermal_model_data[thermal_model_data['change_of_action'] == j][i:i + self.interval + 1]]:
                     # we only look at intervals where the last and first value for T_in are not Nan.
                     dfs.dropna(subset=["t_in"])
                     zone_col_filter = ["zone_temperature_" in col for col in dfs.columns]
                     temp_data_dict = {'time': dfs.index[0],
                                       't_in': dfs['t_in'][0],
                                       't_next': dfs['t_in'][-1],
-                                      # needed to add windowsize for last timestep.
-                                      # TODO check dt if correct.
-                                      'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60 + self.window_size,
+                                      'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
                                       't_out': dfs['t_out'].mean(),  # mean does not count Nan values
-                                      'action': dfs['a'][0]}  # TODO document why we expect no nan in a block.
+                                      'action': dfs['a'][
+                                          0]}  # TODO document why we expect no nan in a block. There actually is a ton of nan
 
                     for temperature_zone in dfs.columns[zone_col_filter]:
                         # mean does not count Nan values
@@ -280,8 +285,6 @@ class ControllerDataManager:
                                       't_std': np.std(dfs['t_in']),
                                       't_min': np.min(dfs['t_in']),
                                       't_max': np.max(dfs['t_in']),
-                                      # needed to add windowsize for last timestep.
-                                      # TODO check dt if correct.
                                       'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
                                       't_out': dfs['t_out'].mean(),  # mean does not count Nan values
                                       'action': dfs['a'][0]}  # TODO document why we expect no nan in a block. There actually is a ton of nan
