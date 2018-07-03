@@ -11,7 +11,7 @@ import math
 
 import utils
 from DataManager import DataManager
-from ControllerDataManager import ControllerDataManager
+from ThermalDataManager import ThermalDataManager
 from NormalSchedule import NormalSchedule
 
 sys.path.insert(0, 'MPC')
@@ -286,7 +286,7 @@ if __name__ == '__main__':
         with open("Thermal Data/demo_" + cfg["Building"], "r") as f:
             thermal_data = pickle.load(f)
     except:
-        controller_dataManager = ControllerDataManager(cfg, client)
+        controller_dataManager = ThermalDataManager(cfg, client)
         thermal_data = controller_dataManager.thermal_data(days_back=50)
         with open("Thermal Data/demo_" + cfg["Building"], "wb") as f:
             pickle.dump(thermal_data, f)
