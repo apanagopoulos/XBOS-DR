@@ -45,7 +45,7 @@ def printTstat(tstat):
 
 #Buildings to be affected
 #buildings = ["avenal-animal-shelter", "avenal-veterans-hall", "avenal-movie-theatre", "avenal-public-works-yard", "avenal-recreation-center", "orinda-community-center", "north-berkeley-senior-center", "south-berkeley-senior-center"]
-buildings = ["avenal-veterans-hall"]
+buildings = ["csu-dominguez-hills"]
 
 # Getting clients
 client = get_client()
@@ -58,6 +58,7 @@ for BUILDING in buildings:
   print("")
 
   query_data = hc.do_query(thermostat_query % BUILDING)["Rows"]
+  query_data = [x for x in query_data if x["?zone"]!="HVAC_Zone_Please_Delete_Me"] #TODO CHANGE THE PLEASE DELETE ME ZONE CHECK WHEN FIXED
 
   tstats = {d["?zone"]: Thermostat(client, d["?uri"]) for d in query_data}
 
