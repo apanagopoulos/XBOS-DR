@@ -5,7 +5,7 @@ Entity_File: ./thanos.ent
 Interval_Length: 15
 Max_Actions: 400
 Pytz_Timezone: America/Los_Angeles
-Server: True
+Server: False
 Thermal_Precision: 0.05
 Pricing: 
     Energy_Rates: "TOU-Summer" # options are "NON-TOU-Summer", "NON-TOU-Winter", "TOU-Summer", "TOU-Winter"
