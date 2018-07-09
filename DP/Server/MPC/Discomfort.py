@@ -27,6 +27,17 @@ class Discomfort:
         heating_setpoint = self.setpoints[node_time / interval][0]
         cooling_setpoint = self.setpoints[node_time / interval][1]
 
+        next_heating_setpoint = self.setpoints[(node_time + interval) / interval][0]
+        next_cooling_setpoint = self.setpoints[(node_time + interval) / interval][1]
+
+        # getting the average setpoint between now and next node to account for the temperature to be the average.
+        average_heating_setpoint = (heating_setpoint + next_heating_setpoint)/2.
+        average_cooling_setpoint = (cooling_setpoint + next_cooling_setpoint)/2.
+
+        # for now setting the setpoints to the average setpoints
+        heating_setpoint = average_heating_setpoint
+        cooling_setpoint = average_cooling_setpoint
+
         # check which setpoint is the temperature closer to
         if abs(heating_setpoint - t_in) < abs(cooling_setpoint - t_in):
             discomfort = (heating_setpoint - t_in) ** 2.

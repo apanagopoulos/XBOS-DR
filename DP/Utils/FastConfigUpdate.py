@@ -46,8 +46,7 @@ for directory in all_dir[1]:
         with open("./" + end_dir + "/" + f, 'r') as o:
             config = yaml.load(o)
 
-        # ==============================
-        # Change variables in config as needed
+        # ============ Zone config ==================
 
         # Set lambdas
         config["Advise"]["DR_Lambda"] = 0.7

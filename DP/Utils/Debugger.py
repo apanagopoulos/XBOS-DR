@@ -17,10 +17,16 @@ def debug_print(now, building, zone, adv, safety_constraints, prices, building_s
         print action_list
         print "New"
         action_list = []
+        discomfort_list = []
+        consumption_list = []
+        usage_list = []
         counter = 0
         while True:
             try:
                 action_list.append(adv.advise_unit.g.node[adv.path[counter]]['best_action'])
+                discomfort_list.append(adv.advise_unit.g.node[adv.path[counter]]['discomfort'])
+                consumption_list.append(adv.advise_unit.g.node[adv.path[counter]]['consumption'])
+                usage_list.append(adv.advise_unit.g.node[adv.path[counter]]['usage_cost'])
                 counter += 1
             except:
                 break
@@ -38,6 +44,13 @@ def debug_print(now, building, zone, adv, safety_constraints, prices, building_s
         print building_setpoints
         print "Time needed for the shortest path:"
         print time
+
+        print("\nDiscomfort:\n")
+        print(discomfort_list)
+        print("\nConsumption:\n")
+        print(consumption_list)
+        print("\nUsage Cost:\n")
+        print(usage_list)
     else:
 
         write_string = "\n\n" + now.strftime('%Y-%m-%d %H:%M:%S') + "\n"

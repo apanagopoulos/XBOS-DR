@@ -1,13 +1,13 @@
 import datetime
 import os
+import sys
 
 import networkx as nx
+import numpy as np
 import plotly.offline as py
 import pytz
 import yaml
-import numpy as np
 
-import sys
 sys.path.insert(0, '../')
 import utils
 from utils import plotly_figure
@@ -41,7 +41,7 @@ class Node:
 
 
 class EVA:
-    def __init__(self, current_time, l, pred_window, interval, discomfort,
+    def __init__(self, current_time, balance_lambda, pred_window, interval, discomfort,
                  thermal, occupancy, safety, energy, zones, root=Node([75], 0), noZones=1):
         """
         Constructor of the Evaluation Class
@@ -66,7 +66,7 @@ class EVA:
 
         self.noZones = noZones
         self.current_time = current_time
-        self.l = l
+        self.balance_lambda = balance_lambda
         self.g = nx.DiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
         self.interval = interval
         self.root = root
@@ -107,7 +107,7 @@ class EVA:
 
         # add the final nodes when algorithm goes past the target prediction time
         if self.get_real_time(from_node.time) >= self.target:
-            self.g.add_node(from_node, usage_cost=0, best_action=None, best_successor=None)
+            self.g.add_node(from_node, usage_cost=0, best_action=None, best_successor=None, discomfort=[None], consumption=[None])
             return
 
         # create the action set (0 is for do nothing, 1 is for cooling, 2 is for heating)
@@ -150,11 +150,11 @@ class EVA:
             # create node if the new node is not already in graph
             # recursively run shortest path for the new node
             if new_node not in self.g:
-                self.g.add_node(new_node, usage_cost=np.inf, best_action=None, best_successor=None)
+                self.g.add_node(new_node, usage_cost=np.inf, best_action=None, best_successor=None, discomfort=[None], consumption=[None])
                 self.shortest_path(new_node)
 
             # need to find a way to get the consumption and discomfort values between [0,1]
-            interval_overall_cost = ((1 - self.l) * (sum(consumption))) + (self.l * (sum(discomfort)))
+            interval_overall_cost = ((1 - self.balance_lambda) * (sum(consumption))) + (self.balance_lambda * (sum(discomfort)))
 
             this_path_cost = self.g.node[new_node]['usage_cost'] + interval_overall_cost
 
@@ -167,7 +167,8 @@ class EVA:
                 if this_path_cost == self.g.node[from_node]['usage_cost'] and self.g.node[from_node]['best_action'] == '0': [TODO: Is there any value in prunning here?]
                     continue
                 '''
-                self.g.add_node(from_node, best_action=action, best_successor=new_node, usage_cost=this_path_cost)
+                self.g.add_node(from_node, best_action=action, best_successor=new_node, usage_cost=this_path_cost,
+                                discomfort=discomfort, consumption=consumption)
 
     def reconstruct_path(self, graph=None):
         """
@@ -213,7 +214,7 @@ class Advise:
                                    heat=heating_cons, cool=cooling_cons)
 
         Zones_Starting_Temps = zone_temperature
-        self.root = Node(Zones_Starting_Temps, 0)
+        self.root = Node(temps=Zones_Starting_Temps, time=0)
         temp_l = dr_lamda if dr else lamda
 
         print("Lambda being used for zone %s is of value %s" % (zones[0], str(temp_l)))
@@ -221,7 +222,7 @@ class Advise:
         # initialize the shortest path model
         self.advise_unit = EVA(
             current_time=self.current_time,
-            l=temp_l,
+            balance_lambda=temp_l,
             pred_window=predictions_hours * 60 / interval,
             interval=interval,
             discomfort=disc,
@@ -268,10 +269,8 @@ if __name__ == '__main__':
 
     from xbos import get_client
     from ControllerDataManager import ControllerDataManager
-    from AverageThermalModel import AverageMPCThermalModel
+    from MPC.ThermalModels.AverageThermalModel import AverageMPCThermalModel
 
-    from xbos.services.hod import HodClient
-    from xbos.devices.thermostat import Thermostat
     import time
 
     ZONE = "HVAC_Zone_AC-1"

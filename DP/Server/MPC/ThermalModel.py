@@ -1,86 +1,142 @@
 import numpy as np
 import pandas as pd
 
+import sys
+sys.path.append("..")
+import utils
+from ParentThermalModel import ParentThermalModel
+
 import yaml
 from scipy.optimize import curve_fit
-# daniel imports
-from sklearn.base import BaseEstimator, RegressorMixin
+
+import matplotlib.pyplot as plt
 
 
 # following model also works as a sklearn model.
-# TODO rename a1 and a2 to heating and cooling action. otherwise gets confusing when we get into 2 stage.
-class ThermalModel(BaseEstimator, RegressorMixin):
+class ThermalModel(ParentThermalModel):
     def __init__(self, thermal_precision=0.05, learning_rate=0.00001):
         '''
         
-        :param thermal_precision: the number of decimal points when predicting.
+        :param thermal_precision: the closest multiple of which to round to.
         '''
 
         self._params = None
-        self._params_order = None
+        self._params_coeff_order = None # first part of _params is coeff part
+        self._params_bias_order = None # the rest is bias part.
         self._filter_columns = None  # order of columns by which to filter when predicting and fitting data.
-
-        # NOTE: if wanting to use cross validation, put these as class variables.
-        #  Also, change in score, e.g. self.model_error to ThermalModel.model_error
-        # keeping track of all the rmse's computed with this class.
-        # first four values are always the training data errors.
-        self.baseline_error = []
-        self.model_error = []
-        self.scoreTypeList = []  # to know which action each rmse belongs to.
-        self.betterThanBaseline = []
 
         self.thermal_precision = thermal_precision
         self.learning_rate = learning_rate  # TODO evaluate which one is best.
+        super(ThermalModel, self).__init__(thermal_precision)
 
     # thermal model function
-    def _func(self, X, *coeff):
+    def _func(self, X, *params):
         """The polynomial with which we model the thermal model.
-        :param X: np.array with column order (Tin, a1, a2, Tout, dt, rest of zone temperatures)
-        :param *coeff: the coefficients for the thermal model. Should be in order: a1, a2, (Tout - Tin),
-         bias, zones coeffs (as given by self._params_order)
+        :param X: np.array with row order (Tin, action, Tout, dt, rest of zone temperatures). Is also compatible 
+                    with pd.df with columns ('t_in', 'action', 't_out', 'dt', "zone_temperatures")
+        :param *coeff: the coefficients for the thermal model. 
+                Should be in order: self._prams_coeff_order, self._params_bias_order
         """
+        # Check if we have the right data type.
+        if isinstance(X, pd.DataFrame):
+            X = X[self._filter_columns].T.as_matrix()
+        elif not isinstance(X, np.ndarray):
+            raise Exception("_func did not receive a valid datatype. Expects pd.df or np.ndarray")
+
+        if not params:
+            try:
+                getattr(self, "_params")
+            except AttributeError:
+                raise RuntimeError("You must train classifer before predicting data!")
+            params = self._params
+
+        coeffs = params[:len(self._params_coeff_order)]
+        biases = params[len(self._params_coeff_order):]
+
         features = self._features(X)
-        Tin = X[0]
-        return Tin + features.T.dot(np.array(coeff))
+        Tin, action = X[0], X[1]
+
+        action_filter = self._filter_actions(X)
+        features_biases = (features - biases) * action_filter
+
+        # print("fil",action_filter)
+        # print("coeffs", coeffs)
+        # print("bias", biases)
+        # print("featbias", features_biases)
+        # print(X.T)
+        return Tin + features_biases.dot(np.array(coeffs))
+
 
     def _features(self, X):
         """Returns the features we are using as a matrix.
-        :param X: A matrix with column order (Tin, a1, a2, Tout, dt, rest of zone temperatures)
+        :param X: A matrix with row order (Tin, action, Tout, dt, rest of zone temperatures)
         :return np.matrix. each column corresponding to the features in the order of self._param_order"""
-        Tin, a1, a2, Tout, dt, zone_temperatures = X[0], X[1], X[2], X[3], X[4], X[5:]
-        features = [a1, a2, Tout - Tin, np.ones(X.shape[1])]
+        Tin, action, Tout, dt, zone_temperatures = X[0], X[1], X[2], X[3], X[4:]
+        features = [Tin,  # action == utils.HEATING_ACTION
+                    Tin,  # action == utils.COOLING_ACTION
+                    Tin,  # action == utils.TWO_STAGE_HEATING_ACTION
+                    Tin,  # action == utils.TWO_STAGE_COOLING_ACTION
+                    Tin - Tout,
+                    np.zeros(X.shape[1])]  # overall bias
         for zone_temp in zone_temperatures:
-            features.append(zone_temp - Tin)
+            features.append(Tin - zone_temp)
+        return np.array(features).T
 
-        return np.array(features) * dt
+    def _filter_actions(self, X):
+        """Returns a matrix of _features(X) shape which tells us which features to use. For example, if we have action Heating,
+        we don't want to learn cooling coefficients, so we set the cooling feature to zero.
+        :param X: A matrix with row order (Tin, action, Tout, dt, rest of zone temperatures)
+        :return np.matrix. each column corresponding to whether to use the features in the order of self._param_order"""
+        num_data = X.shape[1]
+        action, zone_temperatures = X[1], X[4:]
+        action_filter = [action == utils.HEATING_ACTION,
+                  action == utils.COOLING_ACTION,
+                  action == utils.TWO_STAGE_HEATING_ACTION,
+                  action == utils.TWO_STAGE_COOLING_ACTION,
+                  np.ones(num_data),  # tout
+                  np.ones(num_data)]  # bias
+
+        for _ in zone_temperatures:
+            action_filter.append(np.ones(num_data))
+
+        action_filter = np.array(action_filter).T
+        return action_filter
 
     def fit(self, X, y):
         # TODO how should it update parameters when given more new data?
-        """Needs to be called to initally fit the model. Will set self._params to coefficients. 
-        Will refit the model if called with new data. 
-        :param X: pd.df with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperature where all have 
+        """Needs to be called to initally fit the model. Will set self._params to coefficients.
+        Will refit the model if called with new data.
+        :param X: pd.df with columns ('t_in', 'action', 't_out', 'dt') and all zone temperature where all have
         to begin with "zone_temperature_" + "zone name"
         :param y: the labels corresponding to the data. As a pd.dataframe
         :return self
         """
         zone_col = X.columns[["zone_temperature_" in col for col in X.columns]]
-        filter_columns = ['t_in', 'a1', 'a2', 't_out', 'dt'] + list(zone_col)
+        filter_columns = ['t_in', 'action', 't_out', 'dt'] + list(zone_col)
 
         # give mapping from params to coefficients and to store the order in which we get the columns.
         self._filter_columns = filter_columns
-        self._params_order = ["a1", 'a2', 't_out', 'bias'] + list(zone_col)
+        self._params_coeff_order = ["heating", 'cooling',
+                                    'two_stage_heating', 'two_stage_cooling',
+                                    't_out', 'bias'] + list(zone_col)
+
+        self._params_bias_order = ["heating", 'cooling',
+                                    'two_stage_heating', 'two_stage_cooling',
+                                    't_out', 'bias'] + list(zone_col)
 
         # fit the data. we start our guess with all ones for coefficients.
         # Need to do so to be able to generalize to variable number of zones.
         popt, pcov = curve_fit(self._func, X[filter_columns].T.as_matrix(), y.as_matrix(),
                                p0=np.ones(len(
-                                   self._params_order)))
+                                   self._params_coeff_order) + len(self._params_bias_order)))
         self._params = np.array(popt)
         return self
 
-    def updateFit(self, X, y):
+    def update_fit(self, X, y):
+        # does not fit to the current function anymore.
+        return
         """Adaptive Learning for one datapoint. The data given will all be given the same weight when learning.
-        :param X: (pd.df) with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperature where all have 
+        :param X: (pd.df) with columns ('t_in', 'action', 't_out', 'dt') and all zone temperature where all have 
         to begin with "zone_temperature_" + "zone name
         :param y: (float)"""
         # NOTE: Using gradient decent $$self.params = self.param - self.learning_rate * 2 * (self._func(X, *params) - y) * features(X)$$
@@ -89,77 +145,7 @@ class ThermalModel(BaseEstimator, RegressorMixin):
         self._params = self._params - adjust.reshape(
             (adjust.shape[0]))  # to make it the same dimensions as self._params
 
-    def predict(self, X, should_round=True):
-        """Predicts the temperatures for each row in X.
-        :param X: pd.df/pd.Series with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperatures where all 
-        have to begin with "zone_temperature_" + "zone name"
-        :param should_round: bool. Wether to round the prediction according to self.thermal_precision.
-        :return (np.array) entry corresponding to prediction of row in X.
-        """
-        # only predicts next temperatures
-        try:
-            getattr(self, "_params")
-        except AttributeError:
-            raise RuntimeError("You must train classifer before predicting data!")
 
-        # assumes that pandas returns df in order of indexing when doing X[self._filter_columns].
-        predictions = self._func(X[self._filter_columns].T.as_matrix(), *self._params)
-        if should_round:
-            # source for rounding: https://stackoverflow.com/questions/2272149/round-to-5-or-other-number-in-python
-            return self.thermal_precision * np.round(predictions / float(self.thermal_precision))
-        else:
-            return predictions
-
-    def _normalizedRMSE_STD(self, prediction, y, dt):
-        '''Computes the RMSE with scaled differences to normalize to 15 min intervals.
-        NOTE: Use method if you already have predictions.'''
-        diff = prediction - y
-
-        # to offset for actions which were less than 15 min. Normalizes to 15 min intervals.
-        # TODO maybe make variable standard intervals.
-        diff_scaled = diff * 15. / dt
-        mean_error = np.mean(diff_scaled)
-        rmse = np.sqrt(np.mean(np.square(diff_scaled)))
-        # standard deviation of the error
-        diff_std = np.sqrt(np.mean(np.square(diff_scaled - mean_error)))
-        return mean_error, rmse, diff_std
-
-    def score(self, X, y, scoreType=-1):
-        """Scores the model on the dataset given by X and y."""
-
-        # Filters data to score only on subset of actions.
-        assert scoreType in list(range(-1, 4))
-       # filter by the action we want to score by
-        if scoreType == 0:
-            filter_arr = (X['a1'] == 0) & (X['a2'] == 0)
-        elif scoreType == 1:
-            filter_arr = X['a1'] == 1
-        elif scoreType == 2:
-            filter_arr = X['a2'] == 1
-        elif scoreType == -1:
-            filter_arr = np.ones(X['a1'].shape) == 1
-        X = X[filter_arr]
-        y = y[filter_arr]
-
-        # Predict on filtered data
-        prediction = self.predict(X)  # only need to predict for relevant actions
-
-        # Get model error
-        mean_error, rmse, std = self._normalizedRMSE_STD(prediction, y, X['dt'])
-        self.model_error.append({"mean": mean_error, "rmse": rmse, "std": std})
-
-        # add trivial error for reference. Trivial error assumes that the temperature in X["dt"] time will be the same
-        # as the one at the start of interval.
-        trivial_mean_error, trivial_rmse, trivial_std = self._normalizedRMSE_STD(X['t_in'], y, X['dt'])
-        self.baseline_error.append({"mean": trivial_mean_error, "rmse": trivial_rmse, "std": trivial_std})
-
-        # to keep track of whether we are better than the baseline/trivial
-        self.betterThanBaseline.append(trivial_rmse > rmse)
-
-        # To know which actions we scored on
-        self.scoreTypeList.append(scoreType)
-
-        return rmse
 
 
 class MPCThermalModel(ThermalModel):
@@ -200,7 +186,7 @@ class MPCThermalModel(ThermalModel):
     def _datapoint_to_dataframe(self, interval, action, t_out, zone_temperatures):
         """A helper function that converts a datapoint to a pd.df used for predictions.
         Assumes that we have self.zone"""
-        X = {"dt": interval, "a1": int(0 < action <= 1), "a2": int(1 < action <= 2),
+        X = {"dt": interval, "action": action,
              "t_out": t_out}
         for key_zone, val in zone_temperatures.items():
             if key_zone != self.zone:
@@ -219,6 +205,8 @@ class MPCThermalModel(ThermalModel):
         :param now: the current time in the timezone as weather_predictions.
         :return: None
         """
+        # TODO Fix this to get online learning going.
+        return
         # store old temperatures for potential fitting
         old_zone_temperatures = self.zoneTemperatures
 
@@ -278,6 +266,9 @@ class MPCThermalModel(ThermalModel):
         return super(MPCThermalModel, self).predict(X)
 
     def save_to_config(self):
+        # this does not work anymore as intended.
+        return
+
         """saves the whole model to a yaml file.
         RECOMMENDED: PYAML should be installed for prettier config file."""
         config_dict = {}
@@ -307,24 +298,53 @@ class MPCThermalModel(ThermalModel):
 
 
 if __name__ == '__main__':
-    with open("../Buildings/ciee/ZoneConfigs/HVAC_Zone_CentralZone.yml", 'r') as ymlfile:
-        advise_cfg = yaml.load(ymlfile)
-
+    print("Thermal Model")
     import pickle
+    import sys
 
-    # therm_data_file = open("../Thermal Data/ciee_thermal_data_demo")
-    # therm_data = pickle.load(therm_data_file)
-    #
-    # therm_data_file.close()
-    #
-    # mpcThermalModel = MPCThermalModel(therm_data, 15)
-    #
-    # with open("../Thermal Data/thermal_model_demo", "wb") as f:
-    #     pickle.dump(mpcThermalModel, f)
-    with open("../Thermal Data/ciee_thermal_data_demo") as f:
-        therm_data = pickle.load(f)
 
-    model = MPCThermalModel("HVAC_Zone_Southzone", therm_data["HVAC_Zone_Southzone"], 15)
+    sys.path.append("./ThermalModels")
+    from AverageThermalModel import AverageThermalModel
+    building = "avenal-animal-shelter"
+    thermal_data = utils.get_data(building=building, days_back=100, evaluate_preprocess=True, force_reload=False)
+
+    model = ThermalModel()
+    avg_model = AverageThermalModel()
+    zone, zone_data = thermal_data.items()[0]
+
+    zone_data = zone_data[zone_data["dt"] == 5]
+    zone_data = zone_data[zone_data["t_min"] != zone_data["t_max"]]
+
+    zone_data = zone_data[((zone_data["t_in"] > zone_data["t_next"]) | (zone_data["action"] != utils.COOLING_ACTION))]
+
+    cooling_data = zone_data[(zone_data["t_in"] > zone_data["t_next"]) & (zone_data["action"] == utils.COOLING_ACTION)]
+
+    with open("weird", "wb") as f:
+        pickle.dump(zone_data, f)
+
+    print(zone)
+    model.fit(zone_data, zone_data["t_next"])
+    avg_model.fit(zone_data, zone_data["t_next"])
+
+    for i in range(-1, 6):
+        print("normal", model.score(cooling_data, cooling_data["t_next"], scoreType=i))
+        print("avg", avg_model.score(cooling_data, cooling_data["t_next"], scoreType=i))
+
+    print("coeff", model._params[:len(model._params_coeff_order)])
+    print("bias", model._params[len(model._params_coeff_order):])
+
+    print(model._params_coeff_order)
+    print(model._params_bias_order)
+
+    print("avg coeff", avg_model._params)
+
+    utils.apply_consistency_check_to_model(thermal_model=model)
+
+    #(Tin, action, Tout, dt, rest of zone temperatures)
+    X = np.array([[75, 2, 75, 5, 75, 75, 75]]).T
+    # print(model._func(X))
+    # print(model.predict(X))
+
 
     # r = therm_data["HVAC_Zone_Shelter_Corridor"].iloc[-1]
     # print(r)
