@@ -41,7 +41,8 @@ class ThermalDataManager:
     def _preprocess_outside_data(self, outside_data):
         """
         
-        :param outside_data: (list) of pd.df with col ["t_out"] for each weather station. 
+        :param outside_data: (list) of pd.
+         with col ["t_out"] for each weather station. 
         :return: pd.df with col ["t_out"]
         """
 

@@ -177,7 +177,7 @@ def get_raw_data(building=None, client=None, cfg=None, days_back=50, force_reloa
     if cfg is not None:
         building = cfg["Building"]
     else:
-        config_path = "../Buildings/" + building + "/" + building + ".yml"
+        config_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + building + ".yml"
         try:
             with open(config_path, "r") as f:
                 cfg = yaml.load(f)
@@ -202,10 +202,11 @@ def get_raw_data(building=None, client=None, cfg=None, days_back=50, force_reloa
         if client is None:
             client = get_client()
         dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
-        inside_data = dataManager._get_inside_data(dataManager.now - datetime.timedelta(days=days_back),
-                                                   dataManager.now)
-        outside_data = dataManager._get_outside_data(dataManager.now - datetime.timedelta(days=days_back),
-                                                     dataManager.now)
+        now = get_utc_now()
+        inside_data = dataManager._get_inside_data(now - datetime.timedelta(days=days_back),
+                                                   now)
+        outside_data = dataManager._get_outside_data(now - datetime.timedelta(days=days_back),
+                                                     now)
         with open(path + "_inside", "wb") as f:
             pickle.dump(inside_data, f)
         with open(path + "_outside", "wb") as f:
@@ -481,3 +482,29 @@ def plotly_figure(G, path=None):
                         xaxis=go.XAxis(showgrid=False, zeroline=False, showticklabels=False),
                         yaxis=go.YAxis(showgrid=False, zeroline=False, showticklabels=False)))
     return fig
+
+if __name__ == "__main__":
+    # bldg = "csu-dominguez-hills"
+    # inside, outside = get_raw_data(building=bldg, days_back=20, force_reload=True)
+    # use_data = {}
+    # for zone, zone_data in inside.items():
+    #     if zone != "HVAC_Zone_Please_Delete_Me":
+    #         use_data[zone] = zone_data
+    #         print(zone)
+    #         print(zone_data[zone_data["action"] == 2].shape)
+    #         print(zone_data[zone_data["action"] == 5].shape)
+    #
+    # t_man = ThermalDataManager.ThermalDataManager({"Building": bldg}, client=get_client())
+    # outside = t_man._preprocess_outside_data(outside.values())
+    # print("inside")
+    # th_data = t_man._preprocess_thermal_data(use_data, outside, True)
+
+
+    import pickle
+    with open("u_p", "r") as f:
+        th = pickle.load(f)
+
+    zone = "HVAC_Zone_SAC_2101"
+    zone_data = th[zone]
+    print(zone_data[zone_data["action"] == 5].shape)
+    print(zone_data[zone_data["action"] == 2].shape)

@@ -205,13 +205,15 @@ class MPCThermalModel(ThermalModel):
         :param now: the current time in the timezone as weather_predictions.
         :return: None
         """
-        # TODO Fix this to get online learning going.
-        return
+
         # store old temperatures for potential fitting
         old_zone_temperatures = self.zoneTemperatures
 
         # set new zone temperatures.
         self.zoneTemperatures = curr_zone_temperatures
+
+        # TODO Fix this to get online learning going.
+        return
 
         # TODO can't fit? should we allow?
         if self.lastAction is None or self.weatherPredictions is None:

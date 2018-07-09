@@ -9,7 +9,7 @@ Server: True
 Thermal_Precision: 0.05
 Pricing: 
     Energy_Rates: "TOU-Summer" # options are "NON-TOU-Summer", "NON-TOU-Winter", "TOU-Summer", "TOU-Winter"
-    Holiday: FALSE
+    Holiday: False
     DR: True
     DR_Start: "12:00"
     DR_Finish: "18:00"
