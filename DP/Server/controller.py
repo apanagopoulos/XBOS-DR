@@ -263,6 +263,7 @@ class ZoneThread(threading.Thread):
 
 if __name__ == '__main__':
     # TODO check for comfortband height and whether correctly implemented
+    building = sys.argv[1]
 
     # read from config file
     try:
@@ -300,9 +301,11 @@ if __name__ == '__main__':
     threads = []
 
     for zone, tstat in tstats.items():
-        thread = ZoneThread(yaml_filename, tstats, zone, client, zone_thermal_models[zone], cfg["Building"])
-        thread.start()
-        threads.append(thread)
+        # TODO only because we want to only run on the basketball courts.
+        if building != "jesse-turner-center" or "Basketball" in zone:
+            thread = ZoneThread(yaml_filename, tstats, zone, client, zone_thermal_models[zone], cfg["Building"])
+            thread.start()
+            threads.append(thread)
 
     for t in threads:
         t.join()
