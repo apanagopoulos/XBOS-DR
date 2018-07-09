@@ -30,6 +30,8 @@ for directory in all_dir[1]:
     # building_config["Pricing"]["DR_Finish"] = "18:00"
 
     building_config["Server"] = True
+    if "Agent_IP" not in building_config:
+        building_config["Agent_IP"] = "172.17.0.1:28589"
 
     building_config["Pricing"]["DR-Start"] = "16:30"
 
