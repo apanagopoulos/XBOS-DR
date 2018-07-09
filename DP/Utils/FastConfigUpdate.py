@@ -36,6 +36,12 @@ for directory in all_dir[1]:
     if "Entity_File" not in building_config:
         building_config["Entity_File"] = "./thanos.ent"
 
+
+    if "Interval_Length" not in building_config:
+        building_config["Interval_Length"] = 15
+    if "Max_Actions" not in building_config:
+        building_config["Max_Actions"] = 400
+
     building_config["Pricing"]["DR-Start"] = "16:30"
 
     building_config["Pricing"]["DR"] = True
