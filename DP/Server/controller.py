@@ -287,7 +287,8 @@ if __name__ == '__main__':
     # --- Thermal Model Init ------------
     # initialize and fit thermal model
 
-    if building in ["ciee", "avenal-veterans-hall", "hayward-station-1", "hayward-station-8"]:
+    # only single stage cooling buildings get to retrive data. otherwise takes too long.
+    if building in ["ciee", "avenal-veterans-hall", "hayward-station-1", "hayward-station-8", "orinda-community-center"]:
         thermal_data = utils.get_data(cfg=cfg, client=client, days_back=150, force_reload=False)
 
         zone_thermal_models = {}
