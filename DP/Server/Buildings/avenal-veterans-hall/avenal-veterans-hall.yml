@@ -11,7 +11,7 @@ Pricing:
   DR_End: '18:00'
   DR_Finish: '18:00'
   DR_Price: 0.858
-  DR_Start: '16:30'
+  DR_Start: '17:00'
   Energy_Rates: TOU-Summer
   Holiday: false
   NON-TOU-Summer:
