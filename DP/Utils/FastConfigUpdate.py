@@ -84,6 +84,8 @@ for directory in all_dir[1]:
             else:
                 config["Advise"]["MPC"] = True
 
+        config["Advise"]["Thermostat_Write_Tries"] = 10
+
 
         # ==============================
 

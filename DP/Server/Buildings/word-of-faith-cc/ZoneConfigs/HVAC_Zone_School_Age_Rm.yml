@@ -107,5 +107,6 @@ Advise:
   Stage_2_Cooling: false
   Stage_2_Heating: false
   Thermal_Precision: 400
+  Thermostat_Write_Tries: 10
   Ventilation_Consumption: 0.01
 Zone: HVAC_Zone_School_Age_Rm
