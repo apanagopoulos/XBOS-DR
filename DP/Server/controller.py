@@ -287,10 +287,6 @@ if __name__ == '__main__':
     for zone, zone_data in thermal_data.items():
         # Concat zone data to put all data together and filter such that all datapoints have dt != 1
         filtered_zone_data = zone_data[zone_data["dt"] == 5]
-        print(zone)
-        print(zone_data.shape)
-        print(filtered_zone_data.shape)
-        print(filtered_zone_data[filtered_zone_data["action"] == 5].shape)
         if zone != "HVAC_Zone_Please_Delete_Me":
             zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
                                                     interval_length=15, thermal_precision=0.05)
