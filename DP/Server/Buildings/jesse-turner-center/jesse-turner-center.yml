@@ -1,6 +1,7 @@
 Agent_IP: 172.17.0.1:28589
 Building: jesse-turner-center
 Coordinates: 34.0961567,-117.5393781
+Entity_File: ./thanos.ent
 Pricing:
   DR: true
   DR-Finish: '18:00'

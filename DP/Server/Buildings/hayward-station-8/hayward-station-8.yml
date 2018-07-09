@@ -1,6 +1,7 @@
 Agent_IP: 172.17.0.1:28589
 Building: hayward-station-8
 Coordinates: 37.675162,-122.0322595
+Entity_File: ./thanos.ent
 Pricing:
   DR: true
   DR-Start: '16:30'

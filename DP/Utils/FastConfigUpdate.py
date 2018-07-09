@@ -33,6 +33,9 @@ for directory in all_dir[1]:
     if "Agent_IP" not in building_config:
         building_config["Agent_IP"] = "172.17.0.1:28589"
 
+    if "Entity_File" not in building_config:
+        building_config["Entity_File"] = "./thanos.ent"
+
     building_config["Pricing"]["DR-Start"] = "16:30"
 
     building_config["Pricing"]["DR"] = True
