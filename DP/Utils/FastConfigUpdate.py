@@ -31,7 +31,7 @@ for directory in all_dir[1]:
 
     building_config["Server"] = True
 
-    building_config["Pricing"]["DR-Start"] = "16:00"
+    building_config["Pricing"]["DR-Start"] = "16:30"
 
     building_config["Pricing"]["DR"] = True
 
