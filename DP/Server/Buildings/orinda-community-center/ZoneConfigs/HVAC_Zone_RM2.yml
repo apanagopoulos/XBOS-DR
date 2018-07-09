@@ -66,7 +66,7 @@ Advise:
   Heating_Consumption_Stage_2: NaN
   Hysterisis: 1
   Lambda: 0.7
-  MPC: false
+  MPC: true
   MPCPredictiveHorizon: 4
   Max_Actions: 400
   Minimum_Comfortband_Height: 2

@@ -30,6 +30,7 @@ for directory in all_dir[1]:
     # building_config["Pricing"]["DR_Finish"] = "18:00"
 
     building_config["Server"] = True
+    building_config["DR"] = True
 
     # write to config
     with open(building_config_name, 'wb') as f:
@@ -61,10 +62,11 @@ for directory in all_dir[1]:
         # else:
         #     config["Advise"]["MPC"] = True
         #     print("%s zone will run MPC." % f)
-        if config["Advise"]["Stage_2_Cooling"]:
-            config["Advise"]["MPC"] = False
-        else:
-            
+        if "Stage_2_Cooling" in config["Advise"]:
+            if config["Advise"]["Stage_2_Cooling"]:
+                config["Advise"]["MPC"] = False
+            else:
+                config["Advise"]["MPC"] = True
 
 
         # ==============================

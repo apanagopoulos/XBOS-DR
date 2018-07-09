@@ -1,17 +1,28 @@
-Pytz_Timezone: "America/Los_Angeles"
-Building : jesse-turner-center
-Coordinates: "34.0961567,-117.5393781"
-Pricing: 
-Energy_Rates: "TOU-Summer" # options are "NON-TOU-Summer", "NON-TOU-Winter", "TOU-Summer", "TOU-Winter"
-Holiday: FALSE
-DR: FALSE
-CPP-Moderate Start: "12:00"
-CPP-Moderate Finish: "15:00"
-CPP-Moderate Price: 0.45807
-CPP-High Start: "15:00"
-CPP-High Finish: "18:00"
+Building: jesse-turner-center
+CPP-High Finish: '18:00'
 CPP-High Price: 0.87909
+CPP-High Start: '15:00'
+CPP-Moderate Finish: '15:00'
+CPP-Moderate Price: 0.45807
+CPP-Moderate Start: '12:00'
+Coordinates: 34.0961567,-117.5393781
+DR: true
+Energy_Rates: TOU-Summer
+Holiday: false
 NON-TOU-Summer: NaN
 NON-TOU-Winter: NaN
-TOU-Summer: [[["00:00", "08:00", 0.04077],["08:00", "12:00", 0.07513],["12:00", "18:00", 0.10337],["18:00", "23:00", 0.07513],["23:00", "00:00", 0.04077]], [["00:00","00:00",0.04077]]]
-TOU-Winter: [[["00:00", "08:00", 0.04473],["08:00", "21:00", 0.07797],["21:00", "00:00", 0.04473]], [["00:00","00:00",0.04473]]]
+Pricing: null
+Pytz_Timezone: America/Los_Angeles
+Server: true
+TOU-Summer:
+- - ['00:00', '08:00', 0.04077]
+  - ['08:00', '12:00', 0.07513]
+  - ['12:00', '18:00', 0.10337]
+  - ['18:00', '23:00', 0.07513]
+  - ['23:00', '00:00', 0.04077]
+- - ['00:00', '00:00', 0.04077]
+TOU-Winter:
+- - ['00:00', '08:00', 0.04473]
+  - ['08:00', '21:00', 0.07797]
+  - ['21:00', '00:00', 0.04473]
+- - ['00:00', '00:00', 0.04473]

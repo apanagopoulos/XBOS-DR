@@ -1,6 +1,7 @@
 Agent_IP: 172.17.0.1:28589
 Building: orinda-community-center
 Coordinates: 37.8830553,-122.1900413
+DR: true
 Entity_File: thanos.ent
 Interval_Length: 15
 Max_Actions: 400
@@ -30,5 +31,5 @@ Pricing:
     - ['21:30', '00:00', 0.2]
   - - ['00:00', '00:00', 0.2]
 Pytz_Timezone: America/Los_Angeles
-Server: false
+Server: true
 Thermal_Precision: 0.05
