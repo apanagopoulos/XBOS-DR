@@ -30,7 +30,10 @@ for directory in all_dir[1]:
     # building_config["Pricing"]["DR_Finish"] = "18:00"
 
     building_config["Server"] = True
-    building_config["DR"] = True
+
+    building_config["Pricing"]["DR-Start"] = "16:00"
+
+    building_config["Pricing"]["DR"] = True
 
     # write to config
     with open(building_config_name, 'wb') as f:

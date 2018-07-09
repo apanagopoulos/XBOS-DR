@@ -2,7 +2,8 @@ Building: berkeley-corporate-yard
 Coordinates: 37.8660023,-122.2875179
 DR: true
 Pricing:
-  DR: false
+  DR: true
+  DR-Start: '16:00'
   DR_Finish: '18:00'
   DR_Price: 1.11766
   DR_Start: '14:00'

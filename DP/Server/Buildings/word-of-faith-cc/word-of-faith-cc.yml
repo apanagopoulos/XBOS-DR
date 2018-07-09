@@ -2,7 +2,8 @@ Building: word-of-faith-cc
 Coordinates: 38.273656,-121.9611537
 DR: true
 Pricing:
-  DR: false
+  DR: true
+  DR-Start: '16:00'
   DR_Finish: '18:00'
   DR_Price: 0.86298
   DR_Start: '14:00'

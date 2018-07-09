@@ -1,8 +1,8 @@
 Building: hayward-station-8
 Coordinates: 37.675162,-122.0322595
-DR: true
 Pricing:
-  DR: false
+  DR: true
+  DR-Start: '16:00'
   DR_Finish: '18:00'
   DR_Price: 1.75478
   DR_Start: '14:00'
