@@ -42,7 +42,9 @@ for directory in all_dir[1]:
     if "Max_Actions" not in building_config:
         building_config["Max_Actions"] = 400
 
-    building_config["Pricing"]["DR-Start"] = "16:30"
+    building_config["Pricing"]["DR_Start"] = "16:30"
+    building_config["Pricing"]["DR_End"] = "18:00"
+
 
     building_config["Pricing"]["DR"] = True
 
