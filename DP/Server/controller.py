@@ -279,26 +279,34 @@ if __name__ == '__main__':
     else:
         client = get_client()
 
-    # --- Thermal Model Init ------------
-    # initialize and fit thermal model
-
-    thermal_data = utils.get_data(cfg=cfg, client=client, days_back=150, force_reload=False)
-
-    zone_thermal_models = {}
-    for zone, zone_data in thermal_data.items():
-        # Concat zone data to put all data together and filter such that all datapoints have dt != 1
-        filtered_zone_data = zone_data[zone_data["dt"] == 5]
-        if zone != "HVAC_Zone_Please_Delete_Me":
-            zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
-                                                    interval_length=15, thermal_precision=0.05)
-
-    print("Trained Thermal Model")
-    # --------------------------------------
-
     hc = HodClient("xbos/hod", client)
 
     tstats = utils.get_thermostats(client, hc, cfg["Building"])
     threads = []
+
+    # --- Thermal Model Init ------------
+    # initialize and fit thermal model
+
+    if building in ["ciee", "avenal-veterans-hall", "hayward-station-1", "hayward-station-8"]
+        thermal_data = utils.get_data(cfg=cfg, client=client, days_back=150, force_reload=False)
+
+        zone_thermal_models = {}
+        for zone, zone_data in thermal_data.items():
+            # Concat zone data to put all data together and filter such that all datapoints have dt != 1
+            filtered_zone_data = zone_data[zone_data["dt"] == 5]
+            if zone != "HVAC_Zone_Please_Delete_Me":
+                zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
+                                                        interval_length=15, thermal_precision=0.05)
+    else:
+        zone_thermal_models = {}
+        for zone in tstats.keys():
+            zone_thermal_models[zone] = None
+
+
+    print("Trained Thermal Model")
+    # --------------------------------------
+
+
 
     for zone, tstat in tstats.items():
         # TODO only because we want to only run on the basketball courts.

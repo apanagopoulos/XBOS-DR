@@ -22,12 +22,14 @@ for directory in all_dir[1]:
     with open(building_config_name, 'r') as f:
         building_config = yaml.load(f)
 
-    # Get ready for DR-event so we can run on server
-    building_config["Server"] = False
+    # # Get ready for DR-event so we can run on server
+    # building_config["Server"] = False
+    #
+    # # Setting DR start and end
+    # building_config["Pricing"]["DR_Start"] = "14:00"
+    # building_config["Pricing"]["DR_Finish"] = "18:00"
 
-    # Setting DR start and end
-    building_config["Pricing"]["DR_Start"] = "14:00"
-    building_config["Pricing"]["DR_Finish"] = "18:00"
+    building_config["Server"] = True
 
     # write to config
     with open(building_config_name, 'wb') as f:
@@ -49,16 +51,21 @@ for directory in all_dir[1]:
         # ============ Zone config ==================
 
         # Set lambdas
-        config["Advise"]["DR_Lambda"] = 0.7
-        config["Advise"]["General_Lambda"] = 0.995
-
-        # Decide whether to run MPC.
-        if "Cooling_Consumption_Stage_2" in config["Advise"] and not directory == "south-berkeley-senior-center": # we will test thermal model on a two stage cooling building.
+        # config["Advise"]["DR_Lambda"] = 0.7
+        # config["Advise"]["General_Lambda"] = 0.995
+        #
+        # # Decide whether to run MPC.
+        # if "Cooling_Consumption_Stage_2" in config["Advise"] and not directory == "south-berkeley-senior-center": # we will test thermal model on a two stage cooling building.
+        #     config["Advise"]["MPC"] = False
+        #     print("%s zone will NOT run MPC." % f)
+        # else:
+        #     config["Advise"]["MPC"] = True
+        #     print("%s zone will run MPC." % f)
+        if config["Advise"]["Stage_2_Cooling"]:
             config["Advise"]["MPC"] = False
-            print("%s zone will NOT run MPC." % f)
         else:
-            config["Advise"]["MPC"] = True
-            print("%s zone will run MPC." % f)
+            
+
 
         # ==============================
 

@@ -1,0 +1,61 @@
+Zone:  HVAC_Zone_Pre_K_Classroom
+Advise:  
+ Print_Graph:  False 
+ Heating_Consumption: 0.075 #kW assumed (is this for the fan? Should this be at 0 for all gas heating?)
+ Stage_2_Heating: FALSE 
+ Heating_Consumption_Stage_2: 'NaN' #kW (NaN)
+ Cooling_Consumption: 5.5 #kW
+ Stage_2_Cooling: FALSE 
+ Cooling_Consumption_Stage_2: 'NaN' #kW (NaN)
+ Ventilation_Consumption: 0.01 #kW
+ Hysterisis: 1 #F
+ Minimum_Comfortband_Height: 4 #F
+ MPC: FALSE 
+ General_Lambda: 0.7 #0-1
+ DR_Lambda: 0.995 #0-1
+ MPCPredictiveHorizon: 4 #Hours
+ Max_Actions: 400 #int
+ Thermal_Precision: 400 #Float
+ Occupancy_Obs_Len_Addition: 4 #Hours
+ Baseline_Dr_Extend_Percent: 20 #Percentage
+ Occupancy_Sensors:  False 
+ Comfortband:  { 
+  0:[["00:00", "06:30", None, None], ["06:30", "18:30", 72, 74], ["18:30", "00:00", None, None]],
+  1:[["00:00", "06:30", None, None], ["06:30", "18:30", 72, 74], ["18:30", "00:00", None, None]],
+  2:[["00:00", "06:30", None, None], ["06:30", "18:30", 72, 74], ["18:30", "00:00", None, None]],
+  3:[["00:00", "06:30", None, None], ["06:30", "18:30", 72, 74], ["18:30", "00:00", None, None]],
+  4:[["00:00", "06:30", None, None], ["06:30", "18:30", 72, 74], ["18:30", "00:00", None, None]],
+  5:[["00:00", "00:00", None, None]],
+  6:[["00:00", "00:00", None, None]]
+ }  
+   # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun.Must populate all the hours
+ Occupancy:  { 
+  0:[["00:00", "06:30", 0], ["06:30", "18:30", 1], ["18:30", "00:00", 0]],
+  1:[["00:00", "06:30", 0], ["06:30", "18:30", 1], ["18:30", "00:00", 0]],
+  2:[["00:00", "06:30", 0], ["06:30", "18:30", 1], ["18:30", "00:00", 0]],
+  3:[["00:00", "06:30", 0], ["06:30", "18:30", 1], ["18:30", "00:00", 0]],
+  4:[["00:00", "06:30", 0], ["06:30", "18:30", 1], ["18:30", "00:00", 0]],
+  5:[["00:00", "00:00", 0]],
+  6:[["00:00", "00:00", 0]]
+ }  
+   # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun.Must populate all the hours
+ Baseline:  { 
+  0:[["00:00", "06:30", None, None], ["06:30", "18:30", 62,76], ["18:30", "00:00", None, None]],
+  1:[["00:00", "06:30", None, None], ["06:30", "18:30", 62,76], ["18:30", "00:00", None, None]],
+  2:[["00:00", "06:30", None, None], ["06:30", "18:30", 62,76], ["18:30", "00:00", None, None]],
+  3:[["00:00", "06:30", None, None], ["06:30", "18:30", 62,76], ["18:30", "00:00", None, None]],
+  4:[["00:00", "06:30", None, None], ["06:30", "18:30", 62,76], ["18:30", "00:00", None, None]],
+  5:[["00:00", "00:00", None, None]],
+  6:[["00:00", "00:00", None, None]]
+ }  
+   # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun.Must populate all the hours
+ SafetySetpoints:  { 
+  0:[["00:00", "00:00", 54, 86]],
+  1:[["00:00", "00:00", 54, 86]],
+  2:[["00:00", "00:00", 54, 86]],
+  3:[["00:00", "00:00", 54, 86]],
+  4:[["00:00", "00:00", 54, 86]],
+  5:[["00:00", "00:00", 54, 86]],
+  6:[["00:00", "00:00", 54, 86]]
+ }  
+   # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun.Must populate all the hours

@@ -1,2 +1,4 @@
 *.pyc
 **/.idea/workspace.xml
+**/Thermal_Data/*
+**/weather/*
