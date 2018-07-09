@@ -280,14 +280,13 @@ if __name__ == '__main__':
 
     # --- Thermal Model Init ------------
     # initialize and fit thermal model
-    import pickle
 
-    thermal_data = utils.get_data(cfg=cfg, client=client, days_back=150, force_reload=True)
+    thermal_data = utils.get_data(cfg=cfg, client=client, days_back=150, force_reload=False)
 
     zone_thermal_models = {}
     for zone, zone_data in thermal_data.items():
         # Concat zone data to put all data together and filter such that all datapoints have dt != 1
-        filtered_zone_data = zone_data[zone_data["dt"] != 5]
+        filtered_zone_data = zone_data[zone_data["dt"] == 5]
         zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
                                                     interval_length=15, thermal_precision=0.05)
 
