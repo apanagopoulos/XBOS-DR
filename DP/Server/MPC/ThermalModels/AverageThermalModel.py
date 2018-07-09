@@ -135,7 +135,7 @@ class AverageThermalModel(ParentThermalModel):
 
     def update_fit(self, X, y):
         """Adaptive Learning for given datapoints. The data given will all be given the same weight when learning.
-        :param X: (pd.df) with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperature where all have 
+        :param X: (pd.df) with columns ('t_in', 'action', 't_out', 'dt') and all zone temperature where all have 
         to begin with "zone_temperature_" + "zone name
         :param y: (float)"""
         pass
@@ -181,7 +181,7 @@ class AverageMPCThermalModel(AverageThermalModel):
     def _datapoint_to_dataframe(self, action, t_in):
         """A helper function that converts a datapoint to a pd.df used for predictions.
         Assumes that we have self.zone"""
-        X = {"a1": int(0 < action <= 1), "a2": int(1 < action <= 2),
+        X = {"action": action,
              "t_in": t_in}
 
         return pd.DataFrame(X, index=[0])

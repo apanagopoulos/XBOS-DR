@@ -14,10 +14,10 @@ from DataManager import DataManager
 from ThermalDataManager import ThermalDataManager
 from NormalSchedule import NormalSchedule
 
-sys.path.insert(0, 'MPC')
+sys.path.insert(0, './MPC')
 from Advise import Advise
 from ThermalModel import *
-from AverageThermalModel import *
+# from AverageThermalModel import *
 
 sys.path.insert(0, '../Utils')
 import Debugger
@@ -282,25 +282,15 @@ if __name__ == '__main__':
     # initialize and fit thermal model
     import pickle
 
-    try:
-        with open("Thermal Data/demo_" + cfg["Building"], "r") as f:
-            thermal_data = pickle.load(f)
-    except:
-        controller_dataManager = ThermalDataManager(cfg, client)
-        thermal_data = controller_dataManager.thermal_data(days_back=50)
-        with open("Thermal Data/demo_" + cfg["Building"], "wb") as f:
-            pickle.dump(thermal_data, f)
+    thermal_data = utils.get_data(cfg=cfg, client=client, days_back=5, force_reload=True)
 
-    # Concat zone data to put all data together and filter such that all datapoints have dt != 1
-    building_thermal_data = utils.concat_zone_data(thermal_data)
-    filtered_building_thermal_data = building_thermal_data[building_thermal_data["dt"]!=1]
+    zone_thermal_models = {}
+    for zone, zone_data in thermal_data.items():
+        # Concat zone data to put all data together and filter such that all datapoints have dt != 1
+        filtered_zone_data = zone_data[zone_data["dt"] != 5]
+        zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
+                                                    interval_length=15, thermal_precision=0.05)
 
-
-    # TODO INTERVAL SHOULD NOT BE IN config_file.yml, THERE SHOULD BE A DIFFERENT INTERVAL FOR EACH ZONE
-    # TODO, NOTE, We are training on the whole building.
-    zone_thermal_models = {zone: AverageMPCThermalModel(zone, filtered_building_thermal_data, interval_length=cfg["Interval_Length"],
-                                                 thermal_precision=cfg["Thermal_Precision"])
-                           for zone, zone_thermal_data in thermal_data.items()}
     print("Trained Thermal Model")
     # --------------------------------------
 

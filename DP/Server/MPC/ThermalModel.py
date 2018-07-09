@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 
 
 # following model also works as a sklearn model.
-# TODO rename a1 and a2 to heating and cooling action. otherwise gets confusing when we get into 2 stage.
 class ThermalModel(ParentThermalModel):
     def __init__(self, thermal_precision=0.05, learning_rate=0.00001):
         '''
@@ -134,8 +133,10 @@ class ThermalModel(ParentThermalModel):
         return self
 
     def update_fit(self, X, y):
+        # does not fit to the current function anymore.
+        return
         """Adaptive Learning for one datapoint. The data given will all be given the same weight when learning.
-        :param X: (pd.df) with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperature where all have 
+        :param X: (pd.df) with columns ('t_in', 'action', 't_out', 'dt') and all zone temperature where all have 
         to begin with "zone_temperature_" + "zone name
         :param y: (float)"""
         # NOTE: Using gradient decent $$self.params = self.param - self.learning_rate * 2 * (self._func(X, *params) - y) * features(X)$$
@@ -185,7 +186,7 @@ class MPCThermalModel(ThermalModel):
     def _datapoint_to_dataframe(self, interval, action, t_out, zone_temperatures):
         """A helper function that converts a datapoint to a pd.df used for predictions.
         Assumes that we have self.zone"""
-        X = {"dt": interval, "a1": int(0 < action <= 1), "a2": int(1 < action <= 2),
+        X = {"dt": interval, "action": action,
              "t_out": t_out}
         for key_zone, val in zone_temperatures.items():
             if key_zone != self.zone:
@@ -204,6 +205,8 @@ class MPCThermalModel(ThermalModel):
         :param now: the current time in the timezone as weather_predictions.
         :return: None
         """
+        # TODO Fix this to get online learning going.
+        return
         # store old temperatures for potential fitting
         old_zone_temperatures = self.zoneTemperatures
 
@@ -263,6 +266,9 @@ class MPCThermalModel(ThermalModel):
         return super(MPCThermalModel, self).predict(X)
 
     def save_to_config(self):
+        # this does not work anymore as intended.
+        return
+
         """saves the whole model to a yaml file.
         RECOMMENDED: PYAML should be installed for prettier config file."""
         config_dict = {}
