@@ -1,13 +1,13 @@
 import datetime
 import os
+import sys
 
 import networkx as nx
+import numpy as np
 import plotly.offline as py
 import pytz
 import yaml
-import numpy as np
 
-import sys
 sys.path.insert(0, '../')
 import utils
 from utils import plotly_figure
@@ -269,10 +269,8 @@ if __name__ == '__main__':
 
     from xbos import get_client
     from ControllerDataManager import ControllerDataManager
-    from AverageThermalModel import AverageMPCThermalModel
+    from MPC.ThermalModels.AverageThermalModel import AverageMPCThermalModel
 
-    from xbos.services.hod import HodClient
-    from xbos.devices.thermostat import Thermostat
     import time
 
     ZONE = "HVAC_Zone_AC-1"

@@ -23,15 +23,16 @@ class ThermalDataManager:
     Time is always in UTC
     """
 
-    def __init__(self, building_cfg, client):
+    def __init__(self, building_cfg, client, interval=5):
         """
         
         :param building_cfg: A dictionary which should include data for keys "Building" and "Interval_Length"
         :param client: An xbos client.
+        :param interval: the interval in which to split thermal data actions.
         """
         self.building_cfg = building_cfg
         self.building = building_cfg["Building"]
-        self.interval = building_cfg["Interval_Length"]
+        self.interval = interval  # the interval in which to split thermal data actions.
         self.client = client
 
         self.window_size = 1  # minutes. TODO should come from config.
@@ -73,7 +74,7 @@ class ThermalDataManager:
         :param start: (datetime) time to start. in UTC time.
         :param end: (datetime) time to end. in UTC time.
         :return ({uuid: (pd.df) (col: "t_out) outside_data})  outside temperature has freq of 15 min and
-        pd.df columns["tin", "a"] has freq of self.window_size. """
+        pd.df columns["tin", "action"] has freq of self.window_size. """
 
         outside_temperature_query = """SELECT ?weather_station ?uuid FROM %s WHERE {
                                     ?weather_station rdf:type brick:Weather_Temperature_Sensor.
@@ -111,7 +112,7 @@ class ThermalDataManager:
         :param start: (datetime) time to start. in UTC time.
         :param end: (datetime) time to end. in UTC time.
         :return outside temperature has freq of 15 min and
-                    pd.df columns["tin", "a"] has freq of self.window_size. """
+                    pd.df columns["tin", "action"] has freq of self.window_size. """
 
 
         # following queries are for the whole building.
@@ -196,7 +197,7 @@ class ThermalDataManager:
 
             # get the thermostat data
             df = utils.get_mdal_data(mdal_client, mdal_query)
-            zone_thermal_data[zone] = df.rename(columns={dict["tstat_temperature"]: 't_in', dict["tstat_action"]: 'a'})
+            zone_thermal_data[zone] = df.rename(columns={dict["tstat_temperature"]: 't_in', dict["tstat_action"]: 'action'})
 
         return zone_thermal_data
 
@@ -207,7 +208,7 @@ class ThermalDataManager:
         :return: pd.df columns: t_in', 't_next', 'dt','t_out', 'action', 'a1', 'a2', [other mean zone temperatures]
         """
         # Finding all points where action changed.
-        thermal_model_data['change_of_action'] = (thermal_model_data['a'].diff(1) != 0).astype(
+        thermal_model_data['change_of_action'] = (thermal_model_data['action'].diff(1) != 0).astype(
             'int').cumsum()  # given a row it's the number of times we have had an action change up till then. e.g. from nothing to heating.
         # This is accomplished by taking the difference of two consecutive rows and checking if their difference is 0 meaning that they had the same action.
 
@@ -217,6 +218,9 @@ class ThermalDataManager:
         # minutes because we can only look at the Tin corresponding to the start of the 1 min windows. So, at the
         # start of the third window, only 2 min have passed. (In fact, MDAL gives us the mean of the windows, but we
         # can just assume that it is the starting temperature, the logic stays the same.)
+        # We need to accept that we will loose a datapoint by doing so. Ideally, we should be able to just look at the
+        # window that follows right after a contigious action block and assume that that is the t_next. However, since
+        # we have many nan values, that t_next could be hours in the future.
 
         # NOTE: Only dropping nan value during gathering stage and after that. Before then not doing it because
         # we want to keep the times contigious.
@@ -233,7 +237,7 @@ class ThermalDataManager:
                                       't_next': dfs['t_in'][-1],
                                       'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
                                       't_out': dfs['t_out'].mean(),  # mean does not count Nan values
-                                      'action': dfs['a'][
+                                      'action': dfs['action'][
                                           0]}  # TODO document why we expect no nan in a block. There actually is a ton of nan
 
                     for temperature_zone in dfs.columns[zone_col_filter]:
@@ -242,8 +246,6 @@ class ThermalDataManager:
                     data_list.append(temp_data_dict)
 
         thermal_model_data = pd.DataFrame(data_list).set_index('time')
-        thermal_model_data['a1'] = thermal_model_data.apply(utils.f1, axis=1)
-        thermal_model_data['a2'] = thermal_model_data.apply(utils.f2, axis=1)
 
         thermal_model_data = thermal_model_data.dropna()  # final drop. Mostly if the whole interval for the zones or t_out were nan.
 
@@ -257,7 +259,7 @@ class ThermalDataManager:
         :return: pd.df columns: 't_in', 't_next', 't_min', 't_max', 'dt','t_out', 'action', 'a1', 'a2', [other mean zone temperatures]
         """
         # Finding all points where action changed.
-        thermal_model_data['change_of_action'] = (thermal_model_data['a'].diff(1) != 0).astype(
+        thermal_model_data['change_of_action'] = (thermal_model_data['action'].diff(1) != 0).astype(
             'int').cumsum()  # given a row it's the number of times we have had an action change up till then. e.g. from nothing to heating.
         # This is accomplished by taking the difference of two consecutive rows and checking if their difference is 0 meaning that they had the same action.
 
@@ -267,6 +269,9 @@ class ThermalDataManager:
         # minutes because we can only look at the Tin corresponding to the start of the 1 min windows. So, at the
         # start of the third window, only 2 min have passed. (In fact, MDAL gives us the mean of the windows, but we
         # can just assume that it is the starting temperature, the logic stays the same.)
+        # We need to accept that we will loose a datapoint by doing so. Ideally, we should be able to just look at the
+        # window that follows right after a contigious action block and assume that that is the t_next. However, since
+        # we have many nan values, that t_next could be hours in the future.
 
         # NOTE: Only dropping nan value during gathering stage and after that. Before then not doing it because
         # we want to keep the times contigious.
@@ -287,7 +292,7 @@ class ThermalDataManager:
                                       't_max': np.max(dfs['t_in']),
                                       'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
                                       't_out': dfs['t_out'].mean(),  # mean does not count Nan values
-                                      'action': dfs['a'][0]}  # TODO document why we expect no nan in a block. There actually is a ton of nan
+                                      'action': dfs['action'][0]}  # TODO document why we expect no nan in a block. There actually is a ton of nan
 
                     for temperature_zone in dfs.columns[zone_col_filter]:
                         # mean does not count Nan values
@@ -295,8 +300,7 @@ class ThermalDataManager:
                     data_list.append(temp_data_dict)
 
         thermal_model_data = pd.DataFrame(data_list).set_index('time')
-        thermal_model_data['a1'] = thermal_model_data.apply(utils.f1, axis=1)
-        thermal_model_data['a2'] = thermal_model_data.apply(utils.f2, axis=1)
+
         print("Before drop", thermal_model_data.shape) # TODO turns out we drop a lot of data. check why.
         thermal_model_data = thermal_model_data.dropna()  # final drop. Mostly if the whole interval for the zones or t_out were nan.
         print("After drop", thermal_model_data.shape)
@@ -305,7 +309,7 @@ class ThermalDataManager:
 
     def _preprocess_thermal_data(self, zone_data, outside_data, evaluate_preprocess=False):
         """Preprocesses the data for the thermal model.
-        :param zone_data: dict{zone: pd.df columns["tin", "a"]}
+        :param zone_data: dict{zone: pd.df columns["tin", "action"]}
         :param outside_data: pd.df columns["tout"]. 
         NOTE: outside_data freq has to be a multiple of zone_data frequency and has to have a higher freq.
 
@@ -321,11 +325,11 @@ class ThermalDataManager:
 
         for zone in zone_data.keys():
             # Putting together outside and zone data.
-            actions = zone_data[zone]["a"]
+            actions = zone_data[zone]["action"]
             thermal_model_data = pd.concat([all_temperatures, actions, outside_data],
                                            axis=1)  # should be copied data according to documentation
             thermal_model_data = thermal_model_data.rename(columns={"zone_temperature_" + zone: "t_in"})
-            # thermal_model_data['a'] = thermal_model_data.apply(utils.f3, axis=1)  # TODO if we get 0.5 the heating happend for half the time.
+            # thermal_model_data['action'] = thermal_model_data.apply(utils.f3, axis=1)  # TODO if we get 0.5 the heating happend for half the time.
 
             # NOTE:
             # The dataframe will have nan values because outside_temperature does not have same frequency as zone_data.
@@ -399,7 +403,7 @@ if __name__ == '__main__':
     dataManager = ThermalDataManager(cfg, c)
 
 
-    # o = dataManager._get_inside_data(now-datetime.timedelta(days=200), now)
+    o = dataManager._get_inside_data(now-datetime.timedelta(days=10), now)
     # zo = o.values()[0]
     # print zo.iloc[zo.shape[0]/2 - 5:]
     # print(o)
@@ -408,7 +412,7 @@ if __name__ == '__main__':
 
     # print("shape of outside data", o.shape)
     # print("number of 32 temperatures", (o["t_out"] == 32).sum())
-    t = dataManager.thermal_data(days_back=50)
+    # t = dataManager.thermal_data(days_back=50)
 
     # print(t)
 
@@ -423,13 +427,9 @@ if __name__ == '__main__':
 
     # How we drop nan should be better documented in this code.
 
-    # Fix the outside weather getter to get good data. Might affect our predictions.
-
     # Look more carefully at data to see if we are learning weird stuff. In thermal model implement bias for the zones. This is important
     # because if two zones have the same temperature, but they differ in readings by 5 degrees, then there is no coefficient which can
     # make the temperature delta zero when they are actually same.
 
     # Update to make the timezone more friendly. for now everything in UTC time except the returned data.
-
-    # TODO self.now is misleading. Will only look at when the datamanger was created. Should be updated?
 

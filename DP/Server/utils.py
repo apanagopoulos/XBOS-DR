@@ -4,6 +4,15 @@ import pandas as pd
 import numpy as np
 import datetime
 import pytz
+import yaml
+import os
+
+# be careful of circular import.
+# https://stackoverflow.com/questions/11698530/two-python-modules-require-each-others-contents-can-that-work
+import ThermalDataManager
+
+
+from xbos import get_client
 
 from xbos.devices.thermostat import Thermostat
 
@@ -25,6 +34,18 @@ except ImportError:
               "/latest/reference/drawing.html for info")
         print()
         raise
+
+'''
+Utility constants
+'''
+NO_ACTION = 0
+HEATING_ACTION = 1
+COOLING_ACTION = 2
+FAN = 3
+TWO_STAGE_HEATING_ACTION = 4
+TWO_STAGE_COOLING_ACTION = 5
+
+SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(__file__) # this is true for now
 
 '''
 Utility functions
@@ -74,6 +95,123 @@ def get_mdal_datetime_to_string(date_object):
 
 
 # ============ DATA FUNCTIONS ============
+
+def is_cooling(action_data):
+    """Returns boolen area of actions which were cooling (either two or single stage).
+    :param action_data: np.array or pd.series"""
+    return (action_data == COOLING_ACTION) | (action_data == TWO_STAGE_COOLING_ACTION)
+
+
+def is_heating(action_data):
+    """Returns boolen area of actions which were heating (either two or single stage).
+    :param action_data: np.array or pd.series"""
+    return (action_data == HEATING_ACTION) | (action_data == TWO_STAGE_HEATING_ACTION)
+
+
+def get_config(building):
+
+    config_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + building + ".yml"
+    try:
+        with open(config_path, "r") as f:
+            cfg = yaml.load(f)
+    except:
+        print("ERROR: No config file for building %s with path %s" % (building, config_path))
+        return
+    return cfg
+
+
+# Maybe put in ThermalDataManager because of circular import.
+def get_data(building=None, client=None, cfg=None, start=None, end=None, days_back=50, evaluate_preprocess=False, force_reload=False):
+    """
+    Get preprocessed data.
+    :param building: (str) building name
+    :param cfg: (dictionary) config file for building. If none, the method will try to find it. 
+    :param days_back: how many days back from current moment.
+    :param evaluate_preprocess: (Boolean) should controller data manager add more features to data.
+    :param force_reload: (boolean) If some data for this building is stored, the reload if not force reload. Otherwise,
+                        load data as specified.
+    :param start: the start time for the data. If none is given, we will use days_back to go back from the
+                     end datetime if given (end - days_back), or the current time.
+    :param end: the end time for the data. If given, we will use it as our end. If not given, we will use the current 
+                    time as the end.
+    :return: {zone: pd.df with columns according to evaluate_preprocess}
+    """
+    assert cfg is not None or building is not None
+    if cfg is not None:
+        building = cfg["Building"]
+    else:
+        cfg = get_config(building)
+
+    print("----- Get data for Building: %s -----" % building)
+
+    if evaluate_preprocess:
+        path = SERVER_DIR_PATH + "/Thermal_Data/" + building + "_eval"
+    else:
+        path = SERVER_DIR_PATH + "/Thermal_Data/" + building
+
+    if end is None:
+        end = get_utc_now()
+    if start is None:
+        start = end - datetime.timedelta(days=days_back)
+
+    # TODO ugly try/except
+    try:
+        assert not force_reload
+        print(path)
+        with open(path, "r") as f:
+            import pickle
+            thermal_data = pickle.load(f)
+    except:
+        if client is None:
+            client = get_client()
+        dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
+        thermal_data = dataManager.thermal_data(start=start, end=end, evaluate_preprocess=evaluate_preprocess)
+        with open(path, "wb") as f:
+            import pickle
+            pickle.dump(thermal_data, f)
+    return thermal_data
+
+
+def get_raw_data(building=None, client=None, cfg=None, days_back=50, force_reload=False):
+    assert cfg is not None or building is not None
+    if cfg is not None:
+        building = cfg["Building"]
+    else:
+        config_path = "../Buildings/" + building + "/" + building + ".yml"
+        try:
+            with open(config_path, "r") as f:
+                cfg = yaml.load(f)
+        except:
+            print("ERROR: No config file for building %s with path %s" % (building, config_path))
+            return
+
+    print("----- Get data for Building: %s -----" % building)
+
+    path = SERVER_DIR_PATH + "/Thermal_Data/" + building
+    # TODO ugly try/except
+
+    # inside and outside data data
+    import pickle
+    try:
+        assert not force_reload
+        with open(path + "_inside", "r") as f:
+            inside_data = pickle.load(f)
+        with open(path + "_outside", "r") as f:
+            outside_data = pickle.load(f)
+    except:
+        if client is None:
+            client = get_client()
+        dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
+        inside_data = dataManager._get_inside_data(dataManager.now - datetime.timedelta(days=days_back),
+                                                   dataManager.now)
+        outside_data = dataManager._get_outside_data(dataManager.now - datetime.timedelta(days=days_back),
+                                                     dataManager.now)
+        with open(path + "_inside", "wb") as f:
+            pickle.dump(inside_data, f)
+        with open(path + "_outside", "wb") as f:
+            pickle.dump(outside_data, f)
+    return inside_data, outside_data
+
 
 def get_mdal_data(mdal_client, query):
     """Gets mdal data. Necessary method because if a too long time frame is queried, mdal does not return the data.
@@ -144,6 +282,7 @@ def get_mdal_data(mdal_client, query):
 
         # stop if we got the data
         if received_all_data:
+            print("Succeeded.")
             break
 
 
@@ -179,43 +318,6 @@ def as_pandas(result):
     df = df.set_index('Time')
     return df
 
-
-# Heating
-def f1(row):
-    """
-    helper function to format the thermal model dataframe
-    """
-    if row['action'] == 1.:
-        val = 1
-    else:
-        val = 0
-    return val
-
-
-# if state is 2 we are doing cooling
-def f2(row):
-    """
-    helper function to format the thermal model dataframe
-    """
-    if row['action'] == 2.:
-        val = 1
-    else:
-        val = 0
-    return val
-
-
-def f3(row):
-    """
-    helper function to format the thermal model dataframe
-    """
-    if 0 < row['a'] <= 1:
-        return 1
-    elif 1 < row['a'] <= 2:
-        return 2
-    elif np.isnan(row['a']):
-        return row['a']
-    else:
-        return 0
 
 # ============ THERMOSTAT FUNCTIONS ============
 
@@ -393,4 +495,6 @@ if __name__ == '__main__':
     print(d)
     print(d/2)
 
+    print(5*is_cooling(np.array([1,4,3,1,5,6,12,2,6,12,3,12,2])))
+    print(is_heating(np.array([1,4,3,1,5,6,12,2,6,12,3,12,2])))
 

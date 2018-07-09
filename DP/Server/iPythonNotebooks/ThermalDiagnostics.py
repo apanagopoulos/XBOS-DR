@@ -2,7 +2,7 @@ import sys
 sys.path.append("..")
 sys.path.append("../MPC")
 
-from DP.Server.ThermalDataManager import ThermalDataManager
+
 import pandas as pd
 import numpy as np
 import pickle
@@ -11,134 +11,11 @@ import yaml
 import pytz
 import pprint
 import datetime
+import utils
 
 
 
-import matplotlib.pyplot as plt
-from xbos import get_client
 
-from sklearn.model_selection import cross_val_score
-from sklearn.utils import shuffle
-
-# ========= USEFUL DATA FUNCTIONS ========
-
-def get_raw_data(building=None, cfg=None, days_back=50, force_reload=False):
-    """
-    Get raw inside temperature and outside temperature data as returned by mdal.
-    :param building: (str) building name
-    :param cfg: (dictionary) config file for building
-    :param days_back: how many days back from current moment.
-    :param force_reload: (boolean) If some data for this building is stored, the reload if not force reload. Otherwise,
-                        load data as specified.
-    :return: inside_data {zone: pd.df (t_in, a)}, outside_data pd.df (t_out)
-    """
-    assert cfg is not None or building is not None
-    if cfg is not None:
-        building = cfg["Building"]
-    else:
-        config_path = "../Buildings/" + building + "/" + building + ".yml"
-        try:
-            with open(config_path, "r") as f:
-                cfg = yaml.load(f)
-        except:
-            print("ERROR: No config file for building %s with path %s" % (building, config_path))
-            return
-
-    print("----- Get data for Building: %s -----" % building)
-
-    path = "./Eval_data/" + building + "_raw"
-
-    # TODO ugly try/except
-
-    # inside and outside data data
-    import pickle
-    try:
-        assert not force_reload
-        with open(path + "_inside", "r") as f:
-            inside_data = pickle.load(f)
-        with open(path + "_outside", "r") as f:
-            outside_data = pickle.load(f)
-    except:
-        c = get_client()
-        dataManager = ThermalDataManager(cfg, c)
-        inside_data = dataManager._get_inside_data(dataManager.now - datetime.timedelta(days=days_back),
-                                                   dataManager.now)
-        outside_data = dataManager._get_outside_data(dataManager.now - datetime.timedelta(days=days_back),
-                                                     dataManager.now)
-        with open(path + "_inside", "wb") as f:
-            pickle.dump(inside_data, f)
-        with open(path + "_outside", "wb") as f:
-            pickle.dump(outside_data, f)
-    return inside_data, outside_data
-
-
-# Look at a specific file
-def get_data(building=None, cfg=None, days_back=50, evaluate_preprocess=False, force_reload=False):
-    """
-    Get preprocessed data.
-    :param building: (str) building name
-    :param cfg: (dictionary) config file for building. If none, the method will try to find it. 
-    :param days_back: how many days back from current moment.
-    :param evaluate_preprocess: (Boolean) should controller data manager add more features to data.
-    :param force_reload: (boolean) If some data for this building is stored, the reload if not force reload. Otherwise,
-                        load data as specified.
-    :return: {zone: pd.df with columns according to evaluate_preprocess}
-    """
-    assert cfg is not None or building is not None
-    if cfg is not None:
-        building = cfg["Building"]
-    else:
-        config_path = "../Buildings/" + building + "/" + building + ".yml"
-        try:
-            with open(config_path, "r") as f:
-                cfg = yaml.load(f)
-        except:
-            print("ERROR: No config file for building %s with path %s" % (building, config_path))
-            return
-
-    print("----- Get data for Building: %s -----" % building)
-
-    if evaluate_preprocess:
-        path = "./Eval_data/" + building + "_eval"
-    else:
-        path = "./Eval_data/" + building
-
-    # TODO ugly try/except
-    try:
-        assert not force_reload
-        with open(path, "r") as f:
-            import pickle
-            thermal_data = pickle.load(f)
-    except:
-        c = get_client()
-        dataManager = ThermalDataManager(cfg, c)
-        thermal_data = dataManager.thermal_data(days_back=days_back, evaluate_preprocess=evaluate_preprocess)
-        with open(path, "wb") as f:
-            import pickle
-            pickle.dump(thermal_data, f)
-    return thermal_data
-
-
-def concat_zone_data(thermal_data):
-    """Concatinates all zone data into one big dataframe. Will sort by index. Get rid of all zone_temperature columns.
-    :param thermal_data: {zone: pd.df}
-    :return pd.df without zone_temperature columns"""
-    concat_data = pd.concat(thermal_data.values()).sort_index()
-    filter_columns = ["zone_temperature" not in col for col in concat_data.columns]
-    return concat_data[concat_data.columns[filter_columns]]
-
-
-def get_config(building):
-    config_path = "../Buildings/" + building + "/" + building + ".yml"
-    try:
-        with open(config_path, "r") as f:
-            cfg = yaml.load(f)
-    except:
-        print("ERROR: No config file for building %s with path %s" % (building, config_path))
-        return
-    return cfg
-
-# ======== END DATA FUNCTIONS ========
 
 
 def apply_temperature_change(df):
@@ -170,9 +47,10 @@ def evaluate_zone_data(data, find_single_actions=False):
     :param find_single_actions: (Boolean) whether to find actions which were less than or equal to a minute, but
         aren't preceeded or suceeded by the same action. Will only work with pure zone data."""
     # Filter for action data
-    no_action_data = data[(data["a1"] == 0) & (data["a2"] == 0)]
-    heating_data = data[data["a1"] == 1]
-    cooling_data = data[data["a2"] == 1]
+    no_action_data = data[data["action"] == utils.NO_ACTION]
+    # TODO get it to work with 2 stage cooling stuff.
+    heating_data = data[utils.is_heating(data["action"])]
+    cooling_data = data[utils.is_cooling(data["action"])]
 
     # ====== Find the mean increase in temperature for each action for the given zone data ======
     print("----- Get avearge change in temperature for each action. -----")
@@ -291,9 +169,12 @@ def evaluate_zone_data(data, find_single_actions=False):
 
     # ======= Find data where heating happened but temperature dropped even though all other zones/outside temperatures
     # where higher ===========
-    print("======= Find data where heating happened but temperature dropped even though all other "
-          "zones/outside temperatures where higher ===========")
+    print("--------- Find data where heating happened but temperature dropped even though all other "
+          "zones/outside temperatures where higher ---------")
     row_filter = ["zone_temperature_" in col for col in data.columns]
+
+    res = []
+
     for i in range(data.shape[0]):
         row = data.iloc[i]
         tout = row["t_out"]
@@ -312,23 +193,136 @@ def evaluate_zone_data(data, find_single_actions=False):
                 print("All other temperature were higher than curr temperature, but temperature fell:")
                 print(row)
                 print("")
+
+                res.append(row.name)
+
         elif others_less_than_curr_zone and tout < tin and action != 1 and action != 3:
             if tin < tnext:
                 print("All other temperature were lower than curr temperature, but temperature rose:")
                 print(row)
                 print("")
 
+                res.append(row.name)
+
+    return res
+
     # ====== end ======
 
 
+# ============ CONSISTENCY CHECKS ==========
+
+def apply_consistency_check_to_model(data=None, thermal_model=None, thermal_model_class=None):
+    """
+    :param data: Only used for fitting the thermal model."""
+    assert thermal_model is not None or (thermal_model_class is not None and data is not None)
+
+    # evaluate actions. On same temperatures, heating should increase, cooling decrease, and no action should be no different
+    if thermal_model is None:
+        thermalModel = thermal_model_class()
+        thermalModel.fit(data, data["t_next"])
+    else:
+        thermalModel = thermal_model
+
+    def prepare_consistency_test_data(thermal_model, start_temperature=50, end_temperature=100, increments=5, dt=5):
+        filter_columns = thermal_model._filter_columns
+        data = []
+        for temperature in range(start_temperature, end_temperature + increments, increments):
+            # TODO potentially not hardcode dt
+            for action in range(0, 6):
+                datapoint = {"dt": dt, "action": action,
+                             "t_out": temperature, "t_in": temperature}
+                for col in filter_columns:
+                    if "zone_temperature_" in col:
+                        datapoint[col] = temperature
+                data.append(datapoint)
+        return pd.DataFrame(data)
+
+    consistancy_test_data = prepare_consistency_test_data(thermalModel)
+    consistancy_test_data["prediction"] = thermalModel.predict(consistancy_test_data, should_round=False)
+
+    def consistency_check(df):
+        """Consistency check for a df with 3 entries. The datapoints can only differ in the action to be meaningful.
+        :param df: pd.df columns as given by ThermalDataManager plus a column with the predctions"""
+        t_in = df['t_in'].values[0]
+        dt = df["dt"].values[0]
+
+        no_action_temperature = df[(df['action'] == utils.NO_ACTION)]["prediction"].values
+        heating_temperature = df[df['action'] == utils.HEATING_ACTION]["prediction"].values
+        cooling_temperature = df[df['action'] == utils.COOLING_ACTION]["prediction"].values
+        two_stage_heating_temperature = df[df['action'] == utils.TWO_STAGE_HEATING_ACTION]["prediction"].values
+        two_stage_cooling_temperature = df[df['action'] == utils.TWO_STAGE_COOLING_ACTION]["prediction"].values
+
+        consistency_flag = True
+
+        # TODO only use this check when t_out and zone temperature are the same as t_in
+        # Following checks with t_in are only possible when everything has the same temperature
+        # check if predicted heating temperature is higher than current
+        if heating_temperature <= t_in:
+            consistency_flag = False
+            print("Warning, heating_temperature is lower than t_in.")
+        if cooling_temperature >= t_in:
+            consistency_flag = False
+            print("Warning, cooling_temperature is higher than t_in.")
+
+        # check that heating is more than no action and cooling
+        if heating_temperature <= no_action_temperature or heating_temperature <= cooling_temperature:
+            consistency_flag = False
+            print("Warning, heating_temperature is too low compared to other actions.")
+
+        # check that two stage heating is more than no action and cooling
+        if heating_temperature <= no_action_temperature or heating_temperature <= cooling_temperature:
+            consistency_flag = False
+            print("Warning, heating_temperature is too low compared to other actions.")
+
+        # check cooling is lower than heating and no action
+        if cooling_temperature >= no_action_temperature or cooling_temperature >= heating_temperature:
+            consistency_flag = False
+            print("Warning, cooling_temperature is too high compared to other actions.")
+        # check if no action is between cooling and heating
+
+        if not cooling_temperature < no_action_temperature < heating_temperature:
+            consistency_flag = False
+            print("Warning, no action is not larger than heating temperature and lower than cooling temperature.")
+
+        # want to know for what data it didn't work
+        if not consistency_flag:
+            print("Inconsistency for following data:")
+            print(df)
+            print("")
+        return consistency_flag
+
+    consistentcy_results = consistancy_test_data.groupby(["t_in", "dt"]).apply(lambda df: consistency_check(df))
+    is_zone_consistent = all(consistentcy_results.values)
+    if is_zone_consistent:
+        print("The thermal model is consistent.")
+    else:
+        print("The thermal model is inconsistent.")
+
+# ============ END CONSISTENCY CHECK ========
+
 if __name__ == '__main__':
-    bldg = 'avenal-veterans-hall'
-    zone_thermal_data = get_data(building=bldg, days_back=50, evaluate_preprocess=True, force_reload=False)
+    bldg = 'avenal-animal-shelter'
+    zone_thermal_data = utils.get_data(building=bldg, days_back=150, evaluate_preprocess=True, force_reload=False)
 
     zone, zone_data = zone_thermal_data.items()[0]
+    # filter to only have 5 min data
+    zone_data = zone_data[zone_data["dt"] == 5]
+    zone_data = zone_data[zone_data["t_min"] != zone_data["t_max"]]
+    # zone_data = zone_data[(zone_data["t_in"] > zone_data["t_next"]) & (zone_data["action"] == utils.COOLING_ACTION)]
+
     print("Evaluate zone %s" % zone)
     evaluate_zone_data(zone_data)
 
+    # print(res)
+    # zone_data = zone_data.drop(res)
+
+    # evaluate_zone_data(zone_data)
+
+
+    print("Consistency check for zone %s" % zone)
+    from ThermalModel import ThermalModel
+    thermal_model = ThermalModel().fit(zone_data, zone_data["t_next"])
+    apply_consistency_check_to_model(thermal_model=thermal_model)
 
 
 
