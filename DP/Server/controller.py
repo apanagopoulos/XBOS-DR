@@ -282,7 +282,7 @@ if __name__ == '__main__':
     # initialize and fit thermal model
     import pickle
 
-    thermal_data = utils.get_data(cfg=cfg, client=client, days_back=5, force_reload=True)
+    thermal_data = utils.get_data(cfg=cfg, client=client, days_back=150, force_reload=True)
 
     zone_thermal_models = {}
     for zone, zone_data in thermal_data.items():
