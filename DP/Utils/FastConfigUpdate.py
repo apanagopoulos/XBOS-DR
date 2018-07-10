@@ -107,8 +107,8 @@ for directory in all_dir[1]:
 
 
 
-        if "Stage_2_Cooling" in config["Advise"] or building_config["Building"] == "south-berkeley-senior-center":
-            if config["Advise"]["Stage_2_Cooling"]:
+        if "Stage_2_Cooling" in config["Advise"]:
+            if config["Advise"]["Stage_2_Cooling"] or building_config["Building"] == "south-berkeley-senior-center":
                 config["Advise"]["MPC"] = False
             else:
                 config["Advise"]["MPC"] = True
