@@ -307,22 +307,22 @@ if __name__ == '__main__':
 
     sys.path.append("./ThermalModels")
     from AverageThermalModel import AverageThermalModel
-    building = "avenal-animal-shelter"
-    thermal_data = utils.get_data(building=building, days_back=100, evaluate_preprocess=True, force_reload=False)
+    building = "avenal-veterans-hall"
+    thermal_data = utils.get_data(building=building, days_back=100, evaluate_preprocess=False, force_reload=False)
 
     model = ThermalModel()
     avg_model = AverageThermalModel()
     zone, zone_data = thermal_data.items()[0]
 
     zone_data = zone_data[zone_data["dt"] == 5]
-    zone_data = zone_data[zone_data["t_min"] != zone_data["t_max"]]
+    # zone_data = zone_data[zone_data["t_min"] != zone_data["t_max"]]
+    #
+    # zone_data = zone_data[((zone_data["t_in"] > zone_data["t_next"]) | (zone_data["action"] != utils.COOLING_ACTION))]
+    #
+    # cooling_data = zone_data[(zone_data["t_in"] > zone_data["t_next"]) & (zone_data["action"] == utils.COOLING_ACTION)]
 
-    zone_data = zone_data[((zone_data["t_in"] > zone_data["t_next"]) | (zone_data["action"] != utils.COOLING_ACTION))]
-
-    cooling_data = zone_data[(zone_data["t_in"] > zone_data["t_next"]) & (zone_data["action"] == utils.COOLING_ACTION)]
-
-    with open("weird", "wb") as f:
-        pickle.dump(zone_data, f)
+    # with open("weird", "wb") as f:
+    #     pickle.dump(zone_data, f)
 
     print(zone)
     model.fit(zone_data, zone_data["t_next"])

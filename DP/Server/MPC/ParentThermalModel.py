@@ -64,11 +64,31 @@ class ParentThermalModel:
         # only predicts next temperatures
 
         predictions = self._func(X)
+
+
         if should_round:
             # source for rounding: https://stackoverflow.com/questions/2272149/round-to-5-or-other-number-in-python
-            return self.thermal_precision * np.round(predictions / float(self.thermal_precision))
+            predictions = self.thermal_precision * np.round(predictions / float(self.thermal_precision))
         else:
-            return predictions
+            predictions = predictions
+
+        # consistancy check. Hard coded.
+        actions = X["action"]
+        inside_temperature = X["t_in"]
+        for i in range(len(predictions)):
+            pred = predictions[i]
+            action = actions[i]
+            tin = inside_temperature[i]
+            if action == utils.HEATING_ACTION or action == utils.TWO_STAGE_HEATING_ACTION:
+                if pred <= tin:
+                    pred = tin + self.thermal_precision
+            elif action == utils.COOLING_ACTION or action == utils.TWO_STAGE_COOLING_ACTION:
+                if pred >= tin:
+                    pred = tin - self.thermal_precision
+
+            predictions[i] = pred
+
+        return predictions
 
     def _RMSE_STD(self, prediction, y):
         '''Computes the RMSE and mean and std of Error.
