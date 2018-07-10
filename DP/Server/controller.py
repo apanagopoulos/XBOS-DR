@@ -20,7 +20,9 @@ from ThermalModel import *
 # from AverageThermalModel import *
 
 sys.path.insert(0, '../Utils')
+sys.path.append("./Lights")
 import Debugger
+import lights
 
 from xbos import get_client
 from xbos.services.hod import HodClient
@@ -237,6 +239,21 @@ class ZoneThread(threading.Thread):
             else:
                 print("WARNING: We are not actuating this zone today. Zone %s is ending." % self.zone)
                 return
+
+            # actuate the lights script during the DR event.
+            # should happen only once. Hence, one zone is responsible for actuating it.
+            if advise_cfg["Actuate_Lights"]:
+                start = cfg["Pricing"]["DR_Start"]
+                end = cfg["Pricing"]["DR_Finish"]
+                now = utils.get_utc_now().astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])).time()
+                if utils.in_between(now=now, start=utils.get_time_datetime(start), end=utils.get_time_datetime(end)):
+                    print("NOTE: Running the lights script from zone %s." % zone)
+                    lights.lights(building=cfg["Building"], client=self.client, actuate=False)
+                    # Overriding the lights.
+                    advise_cfg["Actuate_Lights"] = False
+                    with open("Buildings/" + cfg["Building"] + "/ZoneConfigs/" + self.zone + ".yml", 'wb') as ymlfile:
+                        yaml.dump(advise_cfg, ymlfile)
+
 
             if actuate:
                 print("Note: Actuating zone %s." % self.zone)

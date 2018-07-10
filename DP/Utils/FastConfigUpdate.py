@@ -51,6 +51,8 @@ for directory in all_dir[1]:
     building_config["Pricing"].pop("DR_End", None)
 
 
+
+
     building_config["Pricing"]["DR"] = True
 
     # write to config
@@ -91,6 +93,7 @@ for directory in all_dir[1]:
         config.pop("General_Lambda", None)
         config.pop("DR_Lambda", None)
 
+        config["Actuate_Lights"] = False
 
         config["Advise"]["Actuate"] = True
         if building_config["Building"] in ["avenal-public-works-yard", "avenal-recreation-center"]:

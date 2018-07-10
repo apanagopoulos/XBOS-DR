@@ -8,7 +8,7 @@ Pricing:
   DR: true
   DR_Finish: '18:00'
   DR_Price: 0.6
-  DR_Start: '14:00'
+  DR_Start: '09:00'
   Energy_Rates: TOU-Summer
   Holiday: false
   NON-TOU-Summer:
@@ -30,5 +30,5 @@ Pricing:
     - ['21:30', '00:00', 0.2]
   - - ['00:00', '00:00', 0.2]
 Pytz_Timezone: America/Los_Angeles
-Server: true
+Server: false
 Thermal_Precision: 0.05

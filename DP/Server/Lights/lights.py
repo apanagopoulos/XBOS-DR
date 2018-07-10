@@ -1,31 +1,29 @@
-import time
 from collections import defaultdict
-from xbos import get_client
-from xbos.services.hod import HodClient
-from xbos.devices.light import Light
-from xbos.devices.occupancy_sensor import Occupancy_Sensor
-import pandas as pd
-from xbos.services import mdal
-import datetime, pytz
 from datetime import timedelta
+import datetime
+import pytz
+
+import pandas as pd
+from xbos.devices.light import Light
+from xbos.services import mdal
+from xbos.services.hod import HodClient
+
 
 ############################################### Initializing our datasets
 
-def lights(building, clinet, actuate=False)
+def lights(building, client, actuate=False):
+    ACTUATE = actuate
+    SITE = building  # Cahnge this according to the site
 
-	ACTUATE = actuate
-	SITE = building #Cahnge this according to the site
+    # print RoomsType.RoomsType[df['column_name'] == some_value]
+    c = client
+    hod = HodClient("xbos/hod")
 
+    skipped = ""
 
-	#print RoomsType.RoomsType[df['column_name'] == some_value]
-	c = client
-	hod = HodClient("xbos/hod")
+    ####### occ query
 
-	skipped = ""
-
-	####### occ query
-
-	occ_query = """SELECT * FROM %s WHERE {
+    occ_query = """SELECT * FROM %s WHERE {
 	?l rdf:type brick:Lighting_System .
 	?l bf:feeds ?room .
 	?room rdf:type brick:Room .
@@ -36,19 +34,18 @@ def lights(building, clinet, actuate=False)
 	?p bf:uuid ?puuid
 	};"""
 
-	res2=hod.do_query(occ_query % SITE)
+    res2 = hod.do_query(occ_query % SITE)
 
-	byrooms_o = defaultdict(list)
-	for item in res2['Rows']:
-		byrooms_o[item['?room']].append(item['?puuid'])
+    byrooms_o = defaultdict(list)
+    for item in res2['Rows']:
+        byrooms_o[item['?room']].append(item['?puuid'])
 
-	print "Occupany uuids loaded!"
+    print "Occupancy uuids loaded!"
+
+    ####### light query
 
 
-	####### light query
-
-
-	light_query = """
+    light_query = """
 	SELECT ?light ?room ?light_uri FROM %s WHERE {
 	  ?light rdf:type brick:Lighting_System .
 	  ?light bf:feeds ?room .
@@ -57,106 +54,103 @@ def lights(building, clinet, actuate=False)
 	};
 	"""
 
-	res = hod.do_query(light_query % SITE)
+    res = hod.do_query(light_query % SITE)
 
-	byrooms = defaultdict(list)
-	all_rooms = set()
-	for item in res['Rows']:
-		all_rooms.add(item['?room'])
-		try:
-			l = Light(c, item['?light_uri'])
-			byrooms[item['?room']].append(l)
-		except:
-			skipped += str(item['?light'])+"in room"+str(item['?room'])+" skipped! \n"
-			pass
+    byrooms = defaultdict(list)
+    all_rooms = set()
+    for item in res['Rows']:
+        all_rooms.add(item['?room'])
+        try:
+            l = Light(c, item['?light_uri'])
+            byrooms[item['?room']].append(l)
+        except:
+            skipped += str(item['?light']) + "in room" + str(item['?room']) + " skipped! \n"
+            pass
 
+    print "Lighting systems loaded!"
 
-	print "Lighting systems loaded!"
-
-
-	####### room type query
+    ####### room type query
 
 
-	type_query = """SELECT * FROM %s WHERE {
+    type_query = """SELECT * FROM %s WHERE {
 	    ?room rdf:type brick:Room.
 	    ?room rdf:label ?label
 	};
 	"""
 
-	res3=hod.do_query(type_query % SITE)
+    res3 = hod.do_query(type_query % SITE)
 
-	byrooms_type = defaultdict(list)
-	for item in res3['Rows']:
-		byrooms_type[item['?room']].append(item['?label'])
+    byrooms_type = defaultdict(list)
+    for item in res3['Rows']:
+        byrooms_type[item['?room']].append(item['?label'])
 
-	print byrooms_type
-	print "Room types loaded!"
+    print byrooms_type
+    print "Room types loaded!"
 
+    Actuated = ""
+    ################################################ Controls
 
-	Actuated = ""
-	################################################ Controls
+    c = mdal.MDALClient("xbos/mdal")
 
-	c = mdal.MDALClient("xbos/mdal")
+    for room in all_rooms:
+        Type = byrooms_type[room][0]
 
-	for room in all_rooms:
-		Type = byrooms_type[room][0]
+        if Type == "Hallway":
+            for light in byrooms[room]:
+                if ACTUATE:
+                    brightness = 20
+                    Actuated += "Lights in room" + str(room) + " was set to" + str(brightness) + "\n"
+                    light.set_brightness(min(light.brightness, brightness))
 
-		if Type=="Hallway":
-			for light in byrooms[room]:
-				if ACTUATE:
-					brightness =20
-					Actuated += "Lights in room"+str(room)+" was set to"+str(brightness)+"\n"
-					light.set_brightness(min(light.brightness,brightness))
+        elif Type == "Toilet":
+            for light in byrooms[room]:
+                print "c"  # print light.brightness
+                if ACTUATE:
+                    brightness = 10
+                    Actuated += "Lights in room" + str(room) + " was set to" + str(brightness) + "\n"
+                    light.set_brightness(min(light.brightness, brightness))
+        else:
+            query_list = []
+            for i in byrooms_o[room]:
+                query_list.append(i)
 
-		elif Type=="Toilet":
-			for light in byrooms[room]:
-				print "c"#print light.brightness
-				if ACTUATE:
-					brightness =10
-					Actuated += "Lights in room"+str(room)+" was set to"+str(brightness)+"\n"
-					light.set_brightness(min(light.brightness,brightness))
-		else:
-			query_list = []
-			for i in byrooms_o[room]:
-				query_list.append(i)
+            # get the sensor data
+            now = datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC"))
+            dfs = c.do_query({'Composition': query_list,
+                              'Selectors': [mdal.MAX] * len(query_list),
+                              'Time': {'T0': (now - timedelta(hours=0.5)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                       'T1': now.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                       'WindowSize': str(30) + 'min',
+                                       'Aligned': True}})
 
-			# get the sensor data
-			now= datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC"))
-			dfs = c.do_query({'Composition': query_list,
-							  'Selectors': [mdal.MAX] * len(query_list),
-							  'Time': {'T0': (now - timedelta(hours=0.5)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-									   'T1': now.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-									   'WindowSize': str(30) + 'min',
-									   'Aligned': True}})
+            dfs = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
 
-			dfs = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
+            df = dfs[[query_list[0]]]
+            df.columns.values[0] = 'occ'
+            df.is_copy = False
+            df.columns = ['occ']
+            # perform OR on the data, if one sensor is activated, the whole room is considered occupied
+            for i in range(1, len(query_list)):
+                df.loc[:, 'occ'] += dfs[query_list[i]]
+            df.loc[:, 'occ'] = 1 * (df['occ'] > 0)
 
-			df = dfs[[query_list[0]]]
-			df.columns.values[0] = 'occ'
-			df.is_copy = False
-			df.columns = ['occ']
-			# perform OR on the data, if one sensor is activated, the whole room is considered occupied
-			for i in range(1, len(query_list)):
-				df.loc[:, 'occ'] += dfs[query_list[i]]
-			df.loc[:, 'occ'] = 1 * (df['occ'] > 0)
+            if df["occ"][0] != 1:
+                for light in byrooms[room]:
+                    if ACTUATE:
+                        brightness = 0
+                        Actuated += "Lights in room" + str(room) + " was set to " + str(brightness) + "\n"
+                        light.set_brightness(min(light.brightness, brightness))
+            else:
+                for light in byrooms[room]:
+                    print light.brightness
+                    if ACTUATE:
+                        brightness = 10
+                        Actuated += "Lights in room" + str(room) + " was set to " + str(brightness) + "\n"
+                        light.set_brightness(min(light.brightness, brightness))
 
-			if df["occ"][0]!=1:
-				for light in byrooms[room]:
-					if ACTUATE:
-						brightness = 0
-						Actuated += "Lights in room"+str(room)+" was set to "+str(brightness)+"\n"
-						light.set_brightness(min(light.brightness,brightness))
-			else:
-				for light in byrooms[room]:
-					print light.brightness()
-					if ACTUATE:
-						brightness = 10
-						Actuated += "Lights in room"+str(room)+" was set to "+str(brightness)+"\n"
-						light.set_brightness(min(light.brightness,brightness))
-
-	print "Done!"
-	print "================================"
-	print "We skipped the following lights:"
-	print skipped
-	print "We actuated the following lights:"
-	print Actuated
+    print "Done!"
+    print "================================"
+    print "We skipped the following lights:"
+    print skipped
+    print "We actuated the following lights:"
+    print Actuated
