@@ -336,7 +336,7 @@ if __name__ == '__main__':
             # print(filtered_zone_data.shape)
             if zone != "HVAC_Zone_Please_Delete_Me":
                 zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
-                                                        interval_length=15, thermal_precision=0.05)
+                                                        interval_length=15, thermal_precision=0.025)
     else:
         zone_thermal_models = {}
         for zone in tstats.keys():
