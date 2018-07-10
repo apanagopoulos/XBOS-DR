@@ -105,7 +105,10 @@ for directory in all_dir[1]:
         if building_config["Building"] == "jesse-turner-center" and "Basketball" not in config["Zone"]:
             config["Advise"]["Actuate"] = False
 
-
+        if "Occupancy Probability" in config["Advise"]:
+            occ = config["Advise"]["Occupancy Probability"]
+            config["Advise"]["Occupancy"] = occ
+            config["Advise"].pop("Occupancy Probability", None)
 
         if "Stage_2_Cooling" in config["Advise"]:
             if config["Advise"]["Stage_2_Cooling"] or building_config["Building"] == "south-berkeley-senior-center":
