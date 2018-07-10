@@ -42,7 +42,7 @@ for directory in all_dir[1]:
     if "Max_Actions" not in building_config:
         building_config["Max_Actions"] = 400
 
-    building_config["Pricing"]["DR_Start"] = "17:00"
+    building_config["Pricing"]["DR_Start"] = "14:00"
     building_config["Pricing"]["DR_Finish"] = "18:00"
 
     building_config["Pricing"].pop("DR Start", None)
@@ -83,6 +83,27 @@ for directory in all_dir[1]:
         # else:
         #     config["Advise"]["MPC"] = True
         #     print("%s zone will run MPC." % f)
+        config["Advise"]["Baseline_Dr_Extend_Percent"] = 4
+        config["Advise"]["General_Lambda"] = 0.995
+        config["Advise"]["DR_Lambda"] = 0.995
+        config["Advise"].pop("Lambda", None)
+
+        config.pop("General_Lambda", None)
+        config.pop("DR_Lambda", None)
+
+
+        config["Advise"]["Actuate"] = True
+        if building_config["Building"] in ["avenal-public-works-yard", "avenal-recreation-center"]:
+            config["Advise"]["Actuate_Start"] = "15:00"
+            config["Advise"]["Actuate_End"] = "00:00"
+        else:
+            config["Advise"]["Actuate_Start"] = "08:00"
+            config["Advise"]["Actuate_End"] = "00:00"
+        if building_config["Building"] == "jesse-turner-center" and "Basketball" not in config["Zone"]:
+            config["Advise"]["Actuate"] = False
+
+
+
         if "Stage_2_Cooling" in config["Advise"]:
             if config["Advise"]["Stage_2_Cooling"]:
                 config["Advise"]["MPC"] = False

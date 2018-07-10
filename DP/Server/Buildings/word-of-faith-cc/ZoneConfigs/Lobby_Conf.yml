@@ -1,5 +1,8 @@
 Advise:
-  Baseline_Dr_Extend_Percent: 20
+  Actuate: true
+  Actuate_End: 00:00
+  Actuate_Start: 08:00
+  Baseline_Dr_Extend_Percent: 4
   Comfortband:
     0:
     - ['00:00', '06:30', 68, 76]
@@ -32,7 +35,7 @@ Advise:
   Cooling_Consumption: 5.5
   Cooling_Consumption_Stage_2: NaN
   DR_Lambda: 0.995
-  General_Lambda: 0.7
+  General_Lambda: 0.995
   Heating_Consumption: 0.075
   Heating_Consumption_Stage_2: NaN
   Hysterisis: 1

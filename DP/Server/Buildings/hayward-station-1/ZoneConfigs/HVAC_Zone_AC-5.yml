@@ -1,4 +1,7 @@
 Advise:
+  Actuate: true
+  Actuate_End: 00:00
+  Actuate_Start: 08:00
   Baseline:
     0:
     - ['00:00', '08:30', 68, 72]
@@ -35,7 +38,7 @@ Advise:
     - ['08:30', '14:00', 68, 72]
     - ['14:00', '18:00', 68, 72]
     - ['18:00', '00:00', 68, 72]
-  Baseline_Dr_Extend_Percent: 20
+  Baseline_Dr_Extend_Percent: 4
   Comfortband:
     0:
     - ['00:00', '08:30', 68, 74]

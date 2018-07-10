@@ -223,31 +223,48 @@ class ZoneThread(threading.Thread):
                 print "There is no " + self.zone + ".yml file under ZoneConfigs folder."
                 return  # TODO MAKE THIS RUN NORMAL SCHEDULE SOMEHOW WHEN NO ZONE CONFIG EXISTS
 
-            normal_schedule_succeeded = None  # initialize
-
-            if advise_cfg["Advise"]["MPC"]:
-                # Run MPC. Try up to advise_cfg["Advise"]["Thermostat_Write_Tries"] to find and write action.
-                count = 0
-                succeeded = False
-                while not succeeded:
-                    succeeded, action_data = hvac_control(cfg, advise_cfg, self.tstats, self.client, self.thermal_model,
-                                                          self.zone, self.building)
-                    if not succeeded:
-                        time.sleep(10)
-                        if count == advise_cfg["Advise"]["Thermostat_Write_Tries"]:
-                            print("Problem with MPC, entering normal schedule.")
-                            normal_schedule = NormalSchedule(cfg, tstat, advise_cfg)
-                            normal_schedule_succeeded, action_data = normal_schedule.normal_schedule()
-                            break
-                        count += 1
+            actuate = True
+            if advise_cfg["Advise"]["Actuate"]:
+                start = advise_cfg["Advise"]["Actuate_Start"]
+                end = advise_cfg["Advise"]["Actuate_End"]
+                now = utils.get_utc_now().astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])).time()
+                if utils.in_between(now=now, start=utils.get_time_datetime(start), end=utils.get_time_datetime(end)):
+                    actuate = True
+                else:
+                    print("Note: We are outside of our actuation regions for zone %s." % zone)
+                    utils.set_override_false(self.tstats[self.zone])
+                    actuate = False
             else:
-                # go into normal schedule
-                normal_schedule = NormalSchedule(cfg, self.tstats[self.zone], advise_cfg)
-                normal_schedule_succeeded, action_data = normal_schedule.normal_schedule()
+                print("WARNING: We are not actuating this zone today. Zone %s is ending." % zone)
+                return
 
-            # TODO if normal schedule fails then real problems
-            if normal_schedule_succeeded is not None and not normal_schedule_succeeded:
-                print("WARNING, normal schedule has not succeeded.")
+            if actuate:
+                print("Note: Actuating zone %s." % zone)
+                normal_schedule_succeeded = None  # initialize
+
+                if advise_cfg["Advise"]["MPC"]:
+                    # Run MPC. Try up to advise_cfg["Advise"]["Thermostat_Write_Tries"] to find and write action.
+                    count = 0
+                    succeeded = False
+                    while not succeeded:
+                        succeeded, action_data = hvac_control(cfg, advise_cfg, self.tstats, self.client, self.thermal_model,
+                                                              self.zone, self.building)
+                        if not succeeded:
+                            time.sleep(10)
+                            if count == advise_cfg["Advise"]["Thermostat_Write_Tries"]:
+                                print("Problem with MPC, entering normal schedule.")
+                                normal_schedule = NormalSchedule(cfg, self.tstats[self.zone], advise_cfg)
+                                normal_schedule_succeeded, action_data = normal_schedule.normal_schedule()
+                                break
+                            count += 1
+                else:
+                    # go into normal schedule
+                    normal_schedule = NormalSchedule(cfg, self.tstats[self.zone], advise_cfg)
+                    normal_schedule_succeeded, action_data = normal_schedule.normal_schedule()
+
+                # TODO if normal schedule fails then real problems
+                if normal_schedule_succeeded is not None and not normal_schedule_succeeded:
+                    print("WARNING, normal schedule has not succeeded.")
 
             print datetime.datetime.now()
             print("This process is for building %s" % cfg["Building"]) # TODO Rethink. now every thread will write this.
@@ -255,10 +272,11 @@ class ZoneThread(threading.Thread):
             time.sleep(60. * float(cfg["Interval_Length"]) - (
             (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
 
-            # end program if setpoints have been changed. (If not writing to tstat we don't want this)
-            if action_data is not None and utils.has_setpoint_changed(self.tstats[self.zone], action_data, self.zone, self.building):
-                print("Ending program for zone %s due to manual setpoint changes. \n" % self.zone)
-                return
+            if actuate:
+                # end program if setpoints have been changed. (If not writing to tstat we don't want this)
+                if action_data is not None and utils.has_setpoint_changed(self.tstats[self.zone], action_data, self.zone, self.building):
+                    print("Ending program for zone %s due to manual setpoint changes. \n" % self.zone)
+                    return
 
 
 if __name__ == '__main__':
@@ -296,8 +314,8 @@ if __name__ == '__main__':
         for zone, zone_data in thermal_data.items():
             # Concat zone data to put all data together and filter such that all datapoints have dt != 1
             filtered_zone_data = zone_data[zone_data["dt"] == 5]
-            print(zone)
-            print(filtered_zone_data.shape)
+            # print(zone)
+            # print(filtered_zone_data.shape)
             if zone != "HVAC_Zone_Please_Delete_Me":
                 zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
                                                         interval_length=15, thermal_precision=0.05)

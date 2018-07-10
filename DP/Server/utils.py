@@ -60,9 +60,9 @@ def get_utc_now():
 def in_between(now, start, end):
     """Finds whether now is between start and end. Takes care of cases such as start=11:00pm and end=1:00am 
     now = 00:01, and hence would return True. 
-    :param now: (datetime.time)
-    :param start: (datetime.time)
-    :param end: (datetime.time)
+    :param now: (datetime.time) 
+    :param start: (datetime.time) 
+    :param end: (datetime.time) 
     :return (boolean)"""
     if start < end:
         return start <= now < end
@@ -345,7 +345,7 @@ def has_setpoint_changed(tstat, setpoint_data, zone, building):
     # write override false so the local schedules can take over again.
     if flag_changed:
 
-        tstat.write({"override": False})
+        set_override_false(tstat)
         import os
         if not os.path.exists("Buildings/" + building + "/Logs"):
             os.makedirs("Buildings/" + building + "/Logs")
@@ -360,6 +360,10 @@ def has_setpoint_changed(tstat, setpoint_data, zone, building):
             "THERMOSTAT CHANGED MANUALY AT : " + datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC")
         logfile.close()
     return flag_changed
+
+
+def set_override_false(tstat):
+    tstat.write({"override": False})
 
 
 def get_thermostats(client, hod, building):
