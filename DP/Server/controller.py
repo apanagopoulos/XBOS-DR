@@ -231,15 +231,15 @@ class ZoneThread(threading.Thread):
                 if utils.in_between(now=now, start=utils.get_time_datetime(start), end=utils.get_time_datetime(end)):
                     actuate = True
                 else:
-                    print("Note: We are outside of our actuation regions for zone %s." % zone)
+                    print("Note: We are outside of our actuation regions for zone %s." % self.zone)
                     utils.set_override_false(self.tstats[self.zone])
                     actuate = False
             else:
-                print("WARNING: We are not actuating this zone today. Zone %s is ending." % zone)
+                print("WARNING: We are not actuating this zone today. Zone %s is ending." % self.zone)
                 return
 
             if actuate:
-                print("Note: Actuating zone %s." % zone)
+                print("Note: Actuating zone %s." % self.zone)
                 normal_schedule_succeeded = None  # initialize
 
                 if advise_cfg["Advise"]["MPC"]:
