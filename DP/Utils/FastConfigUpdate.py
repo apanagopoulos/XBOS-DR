@@ -96,7 +96,7 @@ for directory in all_dir[1]:
         config["Actuate_Lights"] = False
 
         config["Advise"]["Actuate"] = True
-        if building_config["Building"] in ["avenal-public-works-yard", "avenal-recreation-center"]:
+        if building_config["Building"] in ["avenal-recreation-center"]:
             config["Advise"]["Actuate_Start"] = "15:00"
             config["Advise"]["Actuate_End"] = "00:00"
         else:
