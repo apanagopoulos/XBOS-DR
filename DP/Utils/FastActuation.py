@@ -44,8 +44,11 @@ def printTstat(tstat):
 ######################################################################## Main Script:
 
 #Buildings to be affected
-#buildings = ["avenal-animal-shelter", "avenal-veterans-hall", "avenal-movie-theatre", "avenal-public-works-yard", "avenal-recreation-center", "orinda-community-center", "north-berkeley-senior-center", "south-berkeley-senior-center"]
-buildings = ["csu-dominguez-hills"]
+# buildings = ["avenal-animal-shelter", "avenal-veterans-hall", "avenal-movie-theatre", "avenal-public-works-yard", "avenal-recreation-center", "orinda-community-center", "north-berkeley-senior-center", "south-berkeley-senior-center"]
+# buildings = ["csu-dominguez-hills"]
+buildings = ["south-berkeley-senior-center", "north-berkeley-senior-center", "avenal-veterans-hall", "ciee", "orinda-community-center",
+             "hayward-station-1",
+             "hayward-station-8", "csu-dominguez-hills"]
 
 # Getting clients
 client = get_client()

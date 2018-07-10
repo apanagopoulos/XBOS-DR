@@ -6,8 +6,6 @@ Interval_Length: 15
 Max_Actions: 400
 Pricing:
   DR: true
-  DR-Start: '16:30'
-  DR_End: '18:00'
   DR_Finish: '18:00'
   DR_Price: 1.11766
   DR_Start: '17:00'

@@ -45,6 +45,11 @@ for directory in all_dir[1]:
     building_config["Pricing"]["DR_Start"] = "17:00"
     building_config["Pricing"]["DR_Finish"] = "18:00"
 
+    building_config["Pricing"].pop("DR Start", None)
+    building_config["Pricing"].pop("DR Finish", None)
+    building_config["Pricing"].pop("DR-Start", None)
+    building_config["Pricing"].pop("DR_End", None)
+
 
     building_config["Pricing"]["DR"] = True
 
