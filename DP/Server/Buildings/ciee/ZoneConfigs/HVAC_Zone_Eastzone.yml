@@ -1,4 +1,4 @@
-Actuate_Lights: false
+Actuate_Lights: true
 Advise:
   Actuate: true
   Actuate_End: 00:00
