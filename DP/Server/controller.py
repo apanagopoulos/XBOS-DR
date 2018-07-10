@@ -248,7 +248,7 @@ class ZoneThread(threading.Thread):
                 now = utils.get_utc_now().astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])).time()
                 if utils.in_between(now=now, start=utils.get_time_datetime(start), end=utils.get_time_datetime(end)):
                     print("NOTE: Running the lights script from zone %s." % zone)
-                    lights.lights(building=cfg["Building"], client=self.client, actuate=False)
+                    lights.lights(building=cfg["Building"], client=self.client, actuate=True)
                     # Overriding the lights.
                     advise_cfg["Actuate_Lights"] = False
                     with open("Buildings/" + cfg["Building"] + "/ZoneConfigs/" + self.zone + ".yml", 'wb') as ymlfile:
