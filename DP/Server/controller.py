@@ -220,7 +220,7 @@ class ZoneThread(threading.Thread):
                 with open("Buildings/" + cfg["Building"] + "/ZoneConfigs/" + self.zone + ".yml", 'r') as ymlfile:
                     advise_cfg = yaml.load(ymlfile)
             except:
-                print "There is no " + self.zone + ".yml file under ZoneConfigs folder."
+                print "There is no " + self.zone + ".yml file under Buildings/" + cfg["Building"] + "/ZoneConfigs/ folder."
                 return  # TODO MAKE THIS RUN NORMAL SCHEDULE SOMEHOW WHEN NO ZONE CONFIG EXISTS
 
             actuate = True
