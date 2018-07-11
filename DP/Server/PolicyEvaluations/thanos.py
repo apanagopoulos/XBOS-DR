@@ -302,7 +302,6 @@ def getData(building, zone, date):
 		heating_consumption = zone_cfg["Advise"]["Heating_Consumption"]
 		cooling_consumption = zone_cfg["Advise"]["Cooling_Consumption"]
 
-
 		energy_manager = EnergyConsumption(prices, interval, now=None,
 			 	 	 	 	 	    heat=heating_consumption, cool=cooling_consumption)
 		cost = []
@@ -335,7 +334,14 @@ def getData(building, zone, date):
 
 		Discomforts = discomfort[:1440]
 
-		method = "MPC"  # get ground truth from config
+		if zone_cfg["Advise"]["Actuate"]==True:
+			if zone_cfg["Advise"]["MPC"]==True:
+				method = "MPC ("+zone_cfg["Advise"]["Actuate_Start"]+zone_cfg["Advise"]["Actuate_End"]|+")"  # get ground truth from config
+			else:
+				method = "Expansion ("+zone_cfg["Advise"]["Actuate_Start"]+zone_cfg["Advise"]["Actuate_End"]|+")"  # get ground truth from config
+		else:
+			method = "We did NOT actuate this zone"
+
 		temp = OPs, Tin, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp, TinsDOWNsp, Costs, Prices, Discomforts, method, building, zone, date
 	 	pickle.dump( temp, open( "CacheThanos/"+str(building)+str(zone)+str(Date)+".dat", "wb" ) )
 		return temp
