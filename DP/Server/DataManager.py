@@ -466,7 +466,7 @@ class DataManager:
             # if we are going into the next day.
             if end <= start and end.hour == 0 and end.minute == 0:
                 end = end.replace(day=end.day + 1)
-            if t_low is None or t_high is None:
+            if t_low is None or t_high is None or t_low == "None" or t_high == "None":
                 raise Exception("Safety should have no None.")
             else:
                 t_low = float(t_low)
@@ -505,7 +505,7 @@ class DataManager:
             # if we are going into the next day.
             if end <= start and end.hour == 0 and end.minute == 0:
                 end = end.replace(day=end.day + 1)
-            if t_low is None or t_high is None:
+            if t_low is None or t_high is None or t_low == "None" or t_high == "None":
                 interval_safety = df_safety[start:end]
                 df_setpoints[start:end] = interval_safety
             else:
