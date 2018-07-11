@@ -84,7 +84,7 @@ def FtoC(x):
 
 # return (x-32)*5/9.
 
-def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsUP3, TinsDOWN3, Costs, Prices, Discomforts, method, building, zone, date):
+def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsUP3, TinsDOWN3, Costs, Prices, Discomforts, method, manual, building, zone, date,):
 	 '''
 	 OPs : ground truth occupancy array (1440 binary values) 
 	 Tins : 1440 F Indoor temperature values
@@ -137,10 +137,13 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
 	 ax.plot(pos, Tout[:], label="$T^{ OUT}$", color='cyan')
 	 ax.plot(pos, TinsUP[:], label="$T^{ UP}$", color='blue')
 	 ax.plot(pos, TinsDOWN[:], label="$T^{ DOWN}$", color='blue')
-	 ax.plot(pos, TinsUP2[:], label="$T^{ UP}$", color='orange')
-	 ax.plot(pos, TinsDOWN2[:], label="$T^{ DOWN}$", color='orange')
-	 ax.plot(pos, TinsUP3[:], label="$T^{ UP}$", color='yellow')
-	 ax.plot(pos, TinsDOWN3[:], label="$T^{ DOWN}$", color='yellow')
+	 ax.plot(pos, TinsUP2[:], label="$T^{ UP}$", color='yellow')
+	 ax.plot(pos, TinsDOWN2[:], label="$T^{ DOWN}$", color='yellow')
+	 for i in manual:
+	 	 ax.annotate('manual', xy=(pos[i], TinsUP3[i]), xytext=(pos[i], TinsUP3[i]+5), arrowprops=dict(facecolor='red', shrink=0.05),)
+	 	 ax.annotate('manual', xy=(pos[i], TinsDOWN3[i]), xytext=(pos[i], TinsDOWN3[i]-5), arrowprops=dict(facecolor='red', shrink=0.05),)
+	 ax.plot(pos, TinsUP3[:], label="$T^{ UP}$", color='orange')
+	 ax.plot(pos, TinsDOWN3[:], label="$T^{ DOWN}$", color='orange')
 
 	 ax4 = ax.twinx()
 	 ax4.plot(pos, Costs[:], color='green')
@@ -162,9 +165,9 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
 	 ax2.plot(0, 0, label="$T^{ OUT}$", color='cyan')
 	 ax2.plot(0, 0, label="Cost", color='green')
 	 ax2.plot(0, 0, label="Comfort-band limits", color='blue')
-	 ax2.plot(0, 0, label="Safety-band limits", color='orange')
-	 ax2.plot(0, 0, label="Setpoints limits", color='yellow')
-	 ax2.plot(0, 0, label="HVAC state", color='orange')
+	 ax2.plot(0, 0, label="Safety-band limits", color='yellow')
+	 ax2.plot(0, 0, label="Setpoint limits", color='orange')
+	 ax2.plot(0, 0, label="HVAC state", color='red')
 	 ax2.plot(0, 0, label="Prices", color='purple')
 
 	 ax2.bar(pos, OPs, width, color='grey', alpha=0.4, label="Occupancy", linewidth=0)
@@ -182,7 +185,7 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
 	 # ax3.set_xticklabels(sticks)
 	 ax3.set_xlim([0, 24 * 60 / Interval])
 	 ax3.set_ylabel('Action')
-	 ax3.plot(pos, Policy[:], label="Policy of Function", color='orange')
+	 ax3.plot(pos, Policy[:], label="Policy of Function", color='red')
 	 # xticklabels = ax.get_xticklabels()+ax2.get_xticklabels()
 	 # plt.setp(xticklabels, visible=False)
 	 plt.subplots_adjust(hspace=0.001)
@@ -223,7 +226,6 @@ def getData(building, zone, date):
 	root, dirs, files = os.walk("CacheThanos/").next()
 	Flag = False
 	for index, thefile in enumerate(files, start=1):
-		print thefile
 		if str(building)+str(zone)+str(date)+".dat" == thefile:
 			Flag = True
 
@@ -233,8 +235,13 @@ def getData(building, zone, date):
 		cfg = utils.get_config(building)
 		zone_cfg = utils.get_zone_config(building, zone)
 
+		manual = []
 		zone_log = utils.get_zone_log(building, zone)
-		print zone_log
+		for line in zone_log:
+			dateLog = utils.get_mdal_string_to_datetime(line.split(" : ")[1][:-1])
+			dateLog = dateLog.astimezone(pytz.timezone("US/Pacific"))
+			if dateLog.date() == date.date():
+				manual.append( int((dateLog.replace(tzinfo=None) - date.replace(tzinfo=None)).total_seconds()/60) )
 
 		interval = cfg["Interval_Length"]
 
@@ -369,7 +376,7 @@ def getData(building, zone, date):
 		else:
 			method = "We did NOT actuate this zone"
 
-		temp = OPs, Tin, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp, TinsDOWNsp, Costs, Prices, Discomforts, method, building, zone, date
+		temp = OPs, Tin, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp, TinsDOWNsp, Costs, Prices, Discomforts, method, manual, building, zone, date
 	 	pickle.dump( temp, open( "CacheThanos/"+str(building)+str(zone)+str(Date)+".dat", "wb" ) )
 		return temp
 
@@ -381,8 +388,8 @@ def getData(building, zone, date):
 if __name__ == "__main__":
 	 building, zone = choosebuildingandzone()
 	 Date = datetime.datetime(year=2018, month=7, day=10)
-	 OPs, Tins, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp, TinsDOWNsp, Costs, Prices, Discomforts, method, building, zone, date = getData(building, zone, Date)
-	 PlotDay(OPs, Tins, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp, TinsDOWNsp, Costs, Prices, Discomforts, method, building, zone, date)
+	 OPs, Tins, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp, TinsDOWNsp, Costs, Prices, Discomforts, method, manual, building, zone, date = getData(building, zone, Date)
+	 PlotDay(OPs, Tins, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp, TinsDOWNsp, Costs, Prices, Discomforts, method, manual, building, zone, date)
 
 	 # import datetime
 	 # getData("avenal-recreation-center", zone="HVAC_Zone_Tech_Center", date=datetime.datetime(year=2018, day=10, month=7, minute=12, hour=12))
