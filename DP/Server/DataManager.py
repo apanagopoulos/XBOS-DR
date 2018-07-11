@@ -461,8 +461,6 @@ class DataManager:
 
         for interval_setpoints in date_setpoints:
             start, end, t_low, t_high = interval_setpoints
-            t_low = float(t_low)
-            t_high = float(t_high)
             start = combine_date_time(start, date)
             end = combine_date_time(end, date)
             # if we are going into the next day.
@@ -471,6 +469,8 @@ class DataManager:
             if t_low is None or t_high is None:
                 raise Exception("Safety should have no None.")
             else:
+                t_low = float(t_low)
+                t_high = float(t_high)
                 df_setpoints.loc[start:end, "t_high"] = t_high
                 df_setpoints.loc[start:end, "t_low"] = t_low
 
@@ -500,8 +500,6 @@ class DataManager:
 
         for interval_setpoints in date_setpoints:
             start, end, t_low, t_high = interval_setpoints
-            t_low = float(t_low)
-            t_high = float(t_high)
             start = combine_date_time(start, date)
             end = combine_date_time(end, date)
             # if we are going into the next day.
@@ -511,6 +509,8 @@ class DataManager:
                 interval_safety = df_safety[start:end]
                 df_setpoints[start:end] = interval_safety
             else:
+                t_low = float(t_low)
+                t_high = float(t_high)
                 df_setpoints.loc[start:end, "t_high"] = t_high
                 df_setpoints.loc[start:end, "t_low"] = t_low
 
