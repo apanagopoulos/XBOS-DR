@@ -28,6 +28,24 @@ import datetime
 
 # --------------------------------------------------------------------------------------------
 
+def nan_helper(y):
+    """Helper to handle indices and logical indices of NaNs.
+
+    Input:
+        - y, 1d numpy array with possible NaNs
+    Output:
+        - nans, logical indices of NaNs
+        - index, a function, with signature indices= index(logical_indices),
+          to convert logical indices of NaNs to 'equivalent' indices
+    Example:
+        >>> # linear interpolation of NaNs
+        >>> nans, x= nan_helper(y)
+        >>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+    """
+
+    return np.isnan(y), lambda z: z.nonzero()[0]
+
+
 def choosebuildingandzone():
 	 print "-----------------------------------"
 	 print "Buildings:"
@@ -78,7 +96,8 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
 	 Discomforts : 1440 F^2 min values of discomfortPolicies
 	 method : any string describing the method
 	 '''
-	 discomfort = sum(Discomforts)
+
+	 discomfort = sum(Discomforts[:])
 	 Costs = [sum(Costs[:i]) for i in range(1, len(Costs) + 1)]
 	 Tins = [FtoC(i) for i in Tins]
 	 Tout = [FtoC(i) for i in Tout]
@@ -151,7 +170,7 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
 	 ax2.bar(pos, OPs, width, color='grey', alpha=0.4, label="Occupancy", linewidth=0)
 	 # ax2.bar(0, 0, 0, color='grey', alpha=0.7, label="Occupancy", linewidth=0)
 	 ax2.legend(loc=2, ncol=6)
-	 ax2.legend(loc='upper center', bbox_to_anchor=(0.5, 1.10), ncol=6)  # , fancybox=True, shadow=True)
+	 ax2.legend(loc='upper center', bbox_to_anchor=(0.5, 1.10), ncol=9)  # , fancybox=True, shadow=True)
 	 # ax2.legend(loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol64, fancybox=True, shadow=True)
 	 # ax2.set_ylim(2, 27)
 	 group_labels1 = ['']
@@ -190,7 +209,7 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
 	 ax5.xaxis.grid()
 	 ax5.yaxis.set_ticks(np.arange(0, 2, 1))
 
-	 plt.suptitle(str(building)+","+str(zone)+","+str(date)+"("+str(method)+")" + ' - Total Discomfort=' + str(discomfort) + ' $F^2$min')
+	 plt.suptitle(str(building)+" | "+str(zone)+" | "+str(date)+" || "+str(method)+"" + ' \n Total Discomfort=' + str(discomfort) + ' $F^2$min')
 	 plt.show()
 	 return 1
 
@@ -258,6 +277,10 @@ def getData(building, zone, date):
 		outside_data = outside_data.resample("1T").interpolate()
 
 		Tin = zone_inside_data["t_in"].values
+		if np.isnan(Tin).any():
+			print "Warning: Tin contains NaN. Estimates are based on interpolations"
+			nans, x= nan_helper(Tin)
+			Tin[nans]= np.interp(x(nans), x(~nans), Tin[~nans])
 
 		# TODO shitty hack
 		# taking the raw data and putting it into a data frame full of nan. Then, interpolating the data to get
@@ -278,7 +301,8 @@ def getData(building, zone, date):
 		try:
 			 occupancy_ground = datamanager.occupancy_archiver(start=start, end=end)
 		except:
-			 print("Warning, could not get ground truth occupancy.")
+			 if zone_cfg["Advise"]["Occupancy_Sensors"] == True:
+			 	print("Warning, could not get ground truth occupancy.")
 			 occupancy_ground = None
 
 		if occupancy_ground is None:
@@ -336,9 +360,9 @@ def getData(building, zone, date):
 
 		if zone_cfg["Advise"]["Actuate"]==True:
 			if zone_cfg["Advise"]["MPC"]==True:
-				method = "MPC ("+zone_cfg["Advise"]["Actuate_Start"]+zone_cfg["Advise"]["Actuate_End"]|+")"  # get ground truth from config
+				method = "MPC ("+str(zone_cfg["Advise"]["Actuate_Start"])+"-"+str(zone_cfg["Advise"]["Actuate_End"])+")"  # get ground truth from config
 			else:
-				method = "Expansion ("+zone_cfg["Advise"]["Actuate_Start"]+zone_cfg["Advise"]["Actuate_End"]|+")"  # get ground truth from config
+				method = "Expansion ("+str(zone_cfg["Advise"]["Actuate_Start"])+"-"+str(zone_cfg["Advise"]["Actuate_End"])+")"  # get ground truth from config
 		else:
 			method = "We did NOT actuate this zone"
 
