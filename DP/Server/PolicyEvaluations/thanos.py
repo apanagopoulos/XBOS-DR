@@ -139,9 +139,10 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
 	 ax.plot(pos, TinsDOWN[:], label="$T^{ DOWN}$", color='blue')
 	 ax.plot(pos, TinsUP2[:], label="$T^{ UP}$", color='yellow')
 	 ax.plot(pos, TinsDOWN2[:], label="$T^{ DOWN}$", color='yellow')
-	 for i in manual:
-	 	 ax.annotate('manual', xy=(pos[i], TinsUP3[i]), xytext=(pos[i], TinsUP3[i]+5), arrowprops=dict(facecolor='red', shrink=0.05),)
-	 	 ax.annotate('manual', xy=(pos[i], TinsDOWN3[i]), xytext=(pos[i], TinsDOWN3[i]-5), arrowprops=dict(facecolor='red', shrink=0.05),)
+	 if manual:
+	 	 for i in manual:
+	 	 	 ax.annotate('manual', xy=(pos[i], TinsUP3[i]), xytext=(pos[i], TinsUP3[i]+5), arrowprops=dict(facecolor='red', shrink=0.05),)
+	 	 	 ax.annotate('manual', xy=(pos[i], TinsDOWN3[i]), xytext=(pos[i], TinsDOWN3[i]-5), arrowprops=dict(facecolor='red', shrink=0.05),)
 	 ax.plot(pos, TinsUP3[:], label="$T^{ UP}$", color='orange')
 	 ax.plot(pos, TinsDOWN3[:], label="$T^{ DOWN}$", color='orange')
 
@@ -235,13 +236,15 @@ def getData(building, zone, date):
 		cfg = utils.get_config(building)
 		zone_cfg = utils.get_zone_config(building, zone)
 
+		
 		manual = []
 		zone_log = utils.get_zone_log(building, zone)
-		for line in zone_log:
-			dateLog = utils.get_mdal_string_to_datetime(line.split(" : ")[1][:-1])
-			dateLog = dateLog.astimezone(pytz.timezone("US/Pacific"))
-			if dateLog.date() == date.date():
-				manual.append( int((dateLog.replace(tzinfo=None) - date.replace(tzinfo=None)).total_seconds()/60) )
+		if zone_log:
+			for line in zone_log:
+				dateLog = utils.get_mdal_string_to_datetime(line.split(" : ")[1][:-1])
+				dateLog = dateLog.astimezone(pytz.timezone("US/Pacific"))
+				if dateLog.date() == date.date():
+					manual.append( int((dateLog.replace(tzinfo=None) - date.replace(tzinfo=None)).total_seconds()/60) )
 
 		interval = cfg["Interval_Length"]
 

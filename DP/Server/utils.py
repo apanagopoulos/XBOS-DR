@@ -6,6 +6,7 @@ import datetime
 import pytz
 import yaml
 import os
+import string
 
 # be careful of circular import.
 # https://stackoverflow.com/questions/11698530/two-python-modules-require-each-others-contents-can-that-work
@@ -139,11 +140,32 @@ def get_zone_config(building, zone):
     return cfg
 
 def get_zone_log(building, zone):
+
+
     log_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + "Logs/" + zone + ".log"
+
+	## fix for one lines
     try:
-         log = open(log_path, "r")# UTCTHERMOSTAT
+
+		f = open (log_path, "r")
+		log=f.read()
+		log = string.replace(log, "UTCTHERMOSTAT", "UTC\nTHERMOSTAT")
+		f.close()
+
+		f = open(log_path, 'w')
+		f.write(log)
+		f.close()
     except:
-        print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, config_path))
+        print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, log_path))
+        return
+	## end of fix DELETE THIS WHEN ALL LOGS ARE FIXED!
+
+    try:
+        with open (log_path, "r") as f:
+			### fix for same line logs ###
+            log=f.readlines()
+    except:
+        print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, log_path))
         return
     return log
 
