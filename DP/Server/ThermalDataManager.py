@@ -77,6 +77,7 @@ class ThermalDataManager:
         :return ({uuid: (pd.df) (col: "t_out) outside_data})  outside temperature has freq of 15 min and
         pd.df columns["tin", "action"] has freq of self.window_size. """
 
+
         outside_temperature_query = """SELECT ?weather_station ?uuid FROM %s WHERE {
                                     ?weather_station rdf:type brick:Weather_Temperature_Sensor.
                                     ?weather_station bf:uuid ?uuid.
@@ -111,10 +112,9 @@ class ThermalDataManager:
     def _get_inside_data(self, start, end):
         """Get thermostat status and temperature and outside temperature for thermal model.
         :param start: (datetime) time to start. in UTC time.
-        :param end: (datetime) time to end. in UTC time.
+        :param end: (datetime) time to end. in UTC time. 
         :return outside temperature has freq of 15 min and
                     pd.df columns["tin", "action"] has freq of self.window_size. """
-
 
         # following queries are for the whole building.
         thermostat_status_query = """SELECT ?zone ?uuid FROM %s WHERE { 

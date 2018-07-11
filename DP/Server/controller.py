@@ -99,7 +99,7 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building)
         adv_end = time.time()
 
     except Exception:
-
+        print("ERROR: For zone %s." % zone)
         print(traceback.format_exc())
         # TODO Find a better way for exceptions
         return False

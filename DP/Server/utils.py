@@ -108,6 +108,14 @@ def is_heating(action_data):
     return (action_data == HEATING_ACTION) | (action_data == TWO_STAGE_HEATING_ACTION)
 
 
+def choose_client(cfg):
+    if cfg["Server"]:
+        client = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
+    else:
+        client = get_client()
+    return client
+
+
 def get_config(building):
 
     config_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + building + ".yml"
@@ -116,6 +124,17 @@ def get_config(building):
             cfg = yaml.load(f)
     except:
         print("ERROR: No config file for building %s with path %s" % (building, config_path))
+        return
+    return cfg
+
+
+def get_zone_config(building, zone):
+    config_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + "ZoneConfigs/" + zone + ".yml"
+    try:
+        with open(config_path, "r") as f:
+            cfg = yaml.load(f)
+    except:
+        print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, config_path))
         return
     return cfg
 
@@ -172,7 +191,7 @@ def get_data(building=None, client=None, cfg=None, start=None, end=None, days_ba
     return thermal_data
 
 
-def get_raw_data(building=None, client=None, cfg=None, days_back=50, force_reload=False):
+def get_raw_data(building=None, client=None, cfg=None, start=None, end=None, days_back=50, force_reload=False):
     assert cfg is not None or building is not None
     if cfg is not None:
         building = cfg["Building"]
@@ -190,6 +209,12 @@ def get_raw_data(building=None, client=None, cfg=None, days_back=50, force_reloa
     path = SERVER_DIR_PATH + "/Thermal_Data/" + building
     # TODO ugly try/except
 
+    if end is None:
+        end = get_utc_now()
+    if start is None:
+        start = end - datetime.timedelta(days=days_back)
+
+
     # inside and outside data data
     import pickle
     try:
@@ -202,11 +227,9 @@ def get_raw_data(building=None, client=None, cfg=None, days_back=50, force_reloa
         if client is None:
             client = get_client()
         dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
-        now = get_utc_now()
-        inside_data = dataManager._get_inside_data(now - datetime.timedelta(days=days_back),
-                                                   now)
-        outside_data = dataManager._get_outside_data(now - datetime.timedelta(days=days_back),
-                                                     now)
+
+        inside_data = dataManager._get_inside_data(start, end)
+        outside_data = dataManager._get_outside_data(start, end)
         with open(path + "_inside", "wb") as f:
             pickle.dump(inside_data, f)
         with open(path + "_outside", "wb") as f:

@@ -4,12 +4,15 @@ import os
 from datetime import timedelta
 
 import pandas as pd
+import numpy as np
 import pytz
 import requests
 import yaml
 from xbos import get_client
 from xbos.services import mdal
 from xbos.services.hod import HodClient
+
+import utils
 
 
 # TODO add energy data acquisition
@@ -128,6 +131,83 @@ class DataManager:
 
             return occupancy
 
+    def occupancy_archiver(self, start, end):
+
+        hod = HodClient("xbos/hod",
+                        self.c)  # TODO MAKE THIS WORK WITH FROM AND xbos/hod, FOR SOME REASON IT DOES NOT
+
+        occ_query = """SELECT ?sensor ?uuid ?zone FROM %s WHERE {
+
+                              ?sensor rdf:type brick:Occupancy_Sensor .
+                              ?sensor bf:isPointOf/bf:isPartOf ?zone .
+                              ?sensor bf:uuid ?uuid .
+                              ?zone rdf:type brick:HVAC_Zone
+                            };
+                            """ % self.controller_cfg["Building"]  # get all the occupancy sensors uuids
+
+        results = hod.do_query(occ_query)  # run the query
+        uuids = [[x['?zone'], x['?uuid']] for x in results['Rows']]  # unpack
+
+        # only choose the sensors for the zone specified in cfg
+        query_list = []
+        for i in uuids:
+            if i[0] == self.zone:
+                query_list.append(i[1])
+
+        # get the sensor data
+        c = mdal.MDALClient("xbos/mdal", client=self.c)
+        dfs = c.do_query({'Composition': query_list,
+                          'Selectors': [mdal.MAX] * len(query_list),
+                          'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                   'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                   'WindowSize': str(self.interval) + 'min',
+                                   'Aligned': True}})
+
+        dfs = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
+
+        df = dfs[[query_list[0]]]
+        df.columns.values[0] = 'occ'
+        df.is_copy = False
+        df.columns = ['occ']
+        # perform OR on the data, if one sensor is activated, the whole zone is considered occupied
+        for i in range(1, len(query_list)):
+            df.loc[:, 'occ'] += dfs[query_list[i]]
+        df.loc[:, 'occ'] = 1 * (df['occ'] > 0)
+
+        return df
+
+
+    def better_occupancy_config(self, date):
+
+        occupancy = self.advise_cfg["Advise"]["Occupancy"]
+
+        weekday = date.weekday()
+
+        date_occupancy = np.array(occupancy[weekday])
+
+        start_date = date.replace(hour=0, minute=0, second=0)
+        end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
+        date_range = pd.date_range(start=start_date, end=end_date, freq="1T")
+
+        def combine_date_time(time, date):
+            datetime_time = utils.get_time_datetime(time)
+            return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
+
+        # create nan filled dataframe and populate it
+        df_occupancy = pd.DataFrame(columns=["occ"], index=date_range)
+
+        for interval_occupancy in date_occupancy:
+            start, end, occ = interval_occupancy
+            occ = float(occ)
+            start = combine_date_time(start, date)
+            end = combine_date_time(end, date)
+            # if we are going into the next day.
+            if end <= start and end.hour == 0 and end.minute == 0:
+                end = end.replace(day=end.day + 1)
+            df_occupancy.loc[start:end, "occ"] = occ
+        return df_occupancy
+
+
     def weather_fetch(self, fetch_attempts=10):
 
         from dateutil import parser
@@ -182,23 +262,88 @@ class DataManager:
 
         return weather_predictions
 
-    def thermostat_setpoints(self):
-        uuids = [self.advise_cfg["Data_Manager"]["UUIDS"]['Thermostat_high'],
-                 self.advise_cfg["Data_Manager"]["UUIDS"]['Thermostat_low'],
-                 self.advise_cfg["Data_Manager"]["UUIDS"]['Thermostat_mode']]
+    def thermostat_setpoints(self, start, end):
+        """Gets setpoints"""
 
-        c = mdal.MDALClient("xbos/mdal", client=self.c)
-        dfs = c.do_query({'Composition': uuids,
-                          'Selectors': [mdal.MEAN, mdal.MEAN, mdal.MEAN],
-                          'Time': {'T0': (self.now - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                   'T1': self.now.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                   'WindowSize': '1min',
-                                   'Aligned': True}})
+        WINDOW_SIZE = 1 # min for getting data from archiver.
 
-        df = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
-        df = df.rename(columns={uuids[0]: 'T_High', uuids[1]: 'T_Low', uuids[2]: 'T_Mode'})
+        cooling_setpoint_query = """SELECT ?zone ?uuid FROM %s WHERE {
+                    ?tstat rdf:type brick:Thermostat .
+                    ?tstat bf:controls ?RTU .
+                    ?RTU rdf:type brick:RTU .
+                    ?RTU bf:feeds ?zone. 
+                    ?zone rdf:type brick:HVAC_Zone .
+                    ?tstat bf:hasPoint ?setpoint .
+                    ?setpoint rdf:type brick:Supply_Air_Temperature_Cooling_Setpoint .
+                    ?setpoint bf:uuid ?uuid.
+                    };"""
 
-        return df['T_High'][-1], df['T_Low'][-1], df['T_Mode'][-1]
+        heating_setpoint_query = """SELECT ?zone ?uuid FROM %s WHERE {
+                    ?tstat rdf:type brick:Thermostat .
+                    ?tstat bf:controls ?RTU .
+                    ?RTU rdf:type brick:RTU .
+                    ?RTU bf:feeds ?zone. 
+                    ?zone rdf:type brick:HVAC_Zone .
+                    ?tstat bf:hasPoint ?setpoint .
+                    ?setpoint rdf:type brick:Supply_Air_Temperature_Heating_Setpoint .
+                    ?setpoint bf:uuid ?uuid.
+                    };"""
+
+
+        hod_client = HodClient("xbos/hod", self.c)
+
+
+        # get query data
+        temp_thermostat_query_data = {
+            "cooling_setpoint": hod_client.do_query(cooling_setpoint_query % self.controller_cfg["Building"])["Rows"],
+            "heating_setpoint": hod_client.do_query(heating_setpoint_query % self.controller_cfg["Building"])["Rows"],
+        }
+
+        # give the thermostat query data better structure for later loop. Can index by zone and then get uuids for each
+        # thermostat attribute.
+        thermostat_query_data = {}
+        for tstat_attr, attr_dicts in temp_thermostat_query_data.items():
+            for dict in attr_dicts:
+                if dict["?zone"] not in thermostat_query_data:
+                    thermostat_query_data[dict["?zone"]] = {}
+                thermostat_query_data[dict["?zone"]][tstat_attr] = dict["?uuid"]
+
+        # get the data for the thermostats for each zone.
+        mdal_client = mdal.MDALClient("xbos/mdal", client=self.c)
+        zone_setpoint_data = {}
+        for zone, dict in thermostat_query_data.items():
+
+            mdal_query = {'Composition': [dict["heating_setpoint"], dict["cooling_setpoint"]],
+                                        'Selectors': [mdal.MEAN, mdal.MEAN]
+                                           , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                                      'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                                      'WindowSize': str(WINDOW_SIZE) + 'min',
+                                                      'Aligned': True}}
+
+            # get the thermostat data
+            df = utils.get_mdal_data(mdal_client, mdal_query)
+            zone_setpoint_data[zone] = df.rename(columns={dict["heating_setpoint"]: 't_low',
+                                                          dict["cooling_setpoint"]: 't_high'})
+
+        return zone_setpoint_data
+
+        #
+        # uuids = [self.advise_cfg["Data_Manager"]["UUIDS"]['Thermostat_high'],
+        #          self.advise_cfg["Data_Manager"]["UUIDS"]['Thermostat_low'],
+        #          self.advise_cfg["Data_Manager"]["UUIDS"]['Thermostat_mode']]
+        #
+        # c = mdal.MDALClient("xbos/mdal", client=self.c)
+        # dfs = c.do_query({'Composition': uuids,
+        #                   'Selectors': [mdal.MEAN, mdal.MEAN, mdal.MEAN],
+        #                   'Time': {'T0': (self.now - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+        #                            'T1': self.now.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+        #                            'WindowSize': '1min',
+        #                            'Aligned': True}})
+        #
+        # df = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
+        # df = df.rename(columns={uuids[0]: 'T_High', uuids[1]: 'T_Low', uuids[2]: 'T_Mode'})
+        #
+        # return df['T_High'][-1], df['T_Low'][-1], df['T_Mode'][-1]
 
     def prices(self):
 
@@ -241,6 +386,136 @@ class DataManager:
                 now_time += timedelta(minutes=self.interval)
 
         return pricing
+
+    def better_prices(self, date):
+        """For the whole day."""
+
+        price_array = self.controller_cfg["Pricing"][self.controller_cfg["Pricing"]["Energy_Rates"]]
+
+
+        if self.controller_cfg["Pricing"]["Energy_Rates"] == "Server":
+            # not implemented yet, needs fixing from the archiver
+            # (always says 0, problem unless energy its free and noone informed me)
+            raise ValueError('SERVER MODE IS NOT YET IMPLEMENTED FOR ENERGY PRICING')
+        else:
+
+            DR_start_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Start"])
+            DR_finish_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Finish"])
+            DR_price = self.controller_cfg["Pricing"]["DR_Price"]
+            is_DR = self.controller_cfg["Pricing"]["DR"]
+
+
+            is_holiday_weekend = date.weekday() >= 5 or self.controller_cfg["Pricing"]["Holiday"]
+
+            day_type = int(is_holiday_weekend)
+
+            date_prices = np.array(price_array[day_type])
+
+            start_date = date.replace(hour=0, minute=0, second=0)
+            end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
+            date_range = pd.date_range(start=start_date, end=end_date, freq="1T")
+
+            def combine_date_time(time, date):
+                datetime_time = utils.get_time_datetime(time)
+                return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
+
+            # create nan filled dataframe and populate it
+            df_prices = pd.DataFrame(columns=["price"], index=date_range)
+
+            for interval_price in date_prices:
+                start, end, price = interval_price
+                price = float(price)
+                start = combine_date_time(start, date)
+                end = combine_date_time(end, date)
+                # if we are going into the next day.
+                if end <= start and end.hour == 0 and end.minute == 0:
+                    end = end.replace(day=end.day + 1)
+                df_prices.loc[start:end] = price
+
+            # setting dr prices.
+            if is_DR:
+                df_prices.loc[DR_start_time:DR_finish_time] = DR_price
+
+
+        return df_prices
+
+    def better_safety(self, date):
+        # for whole day.
+
+        setpoints_array = self.advise_cfg["Advise"]["SafetySetpoints"]
+
+        weekday = date.weekday()
+
+        date_setpoints = np.array(setpoints_array[weekday])
+
+        start_date = date.replace(hour=0, minute=0, second=0)
+        end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
+        date_range = pd.date_range(start=start_date, end=end_date, freq="1T")
+
+        def combine_date_time(time, date):
+            datetime_time = utils.get_time_datetime(time)
+            return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
+
+        # create nan filled dataframe and populate it
+        df_setpoints = pd.DataFrame(columns=["t_high", "t_low"], index=date_range)
+
+        for interval_setpoints in date_setpoints:
+            start, end, t_low, t_high = interval_setpoints
+            t_low = float(t_low)
+            t_high = float(t_high)
+            start = combine_date_time(start, date)
+            end = combine_date_time(end, date)
+            # if we are going into the next day.
+            if end <= start and end.hour == 0 and end.minute == 0:
+                end = end.replace(day=end.day + 1)
+            if t_low is None or t_high is None:
+                raise Exception("Safety should have no None.")
+            else:
+                df_setpoints.loc[start:end, "t_high"] = t_high
+                df_setpoints.loc[start:end, "t_low"] = t_low
+
+        return df_setpoints
+
+    def better_comfortband(self, date):
+        # for whole day.
+
+        setpoints_array = self.advise_cfg["Advise"]["Comfortband"]
+        df_safety = self.better_safety(date)
+
+        weekday = date.weekday()
+
+
+        date_setpoints = np.array(setpoints_array[weekday])
+
+        start_date = date.replace(hour=0, minute=0, second=0)
+        end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
+        date_range = pd.date_range(start=start_date, end=end_date, freq="1T")
+
+        def combine_date_time(time, date):
+            datetime_time = utils.get_time_datetime(time)
+            return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
+
+        # create nan filled dataframe and populate it
+        df_setpoints = pd.DataFrame(columns=["t_high", "t_low"], index=date_range)
+
+        for interval_setpoints in date_setpoints:
+            start, end, t_low, t_high = interval_setpoints
+            t_low = float(t_low)
+            t_high = float(t_high)
+            start = combine_date_time(start, date)
+            end = combine_date_time(end, date)
+            # if we are going into the next day.
+            if end <= start and end.hour == 0 and end.minute == 0:
+                end = end.replace(day=end.day + 1)
+            if t_low is None or t_high is None:
+                interval_safety = df_safety[start:end]
+                df_setpoints[start:end] = interval_safety
+            else:
+                df_setpoints.loc[start:end, "t_high"] = t_high
+                df_setpoints.loc[start:end, "t_low"] = t_low
+
+        return df_setpoints
+
 
     def building_setpoints(self):
 

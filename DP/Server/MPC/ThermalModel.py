@@ -315,6 +315,8 @@ if __name__ == '__main__':
     zone, zone_data = thermal_data.items()[0]
 
     zone_data = zone_data[zone_data["dt"] == 5]
+
+
     # zone_data = zone_data[zone_data["t_min"] != zone_data["t_max"]]
     #
     # zone_data = zone_data[((zone_data["t_in"] > zone_data["t_next"]) | (zone_data["action"] != utils.COOLING_ACTION))]
@@ -328,9 +330,11 @@ if __name__ == '__main__':
     model.fit(zone_data, zone_data["t_next"])
     avg_model.fit(zone_data, zone_data["t_next"])
 
-    for i in range(-1, 6):
-        print("normal", model.score(cooling_data, cooling_data["t_next"], scoreType=i))
-        print("avg", avg_model.score(cooling_data, cooling_data["t_next"], scoreType=i))
+    # print(model._params)
+
+    # for i in range(-1, 6):
+    #     print("normal", model.score(zone_data, zone_data["t_next"], scoreType=i))
+    #     print("avg", avg_model.score(zone_data, zone_data["t_next"], scoreType=i))
 
     print("coeff", model._params[:len(model._params_coeff_order)])
     print("bias", model._params[len(model._params_coeff_order):])
@@ -340,10 +344,11 @@ if __name__ == '__main__':
 
     print("avg coeff", avg_model._params)
 
-    utils.apply_consistency_check_to_model(thermal_model=model)
+    # utils.apply_consistency_check_to_model(thermal_model=model)
 
     #(Tin, action, Tout, dt, rest of zone temperatures)
-    X = np.array([[75, 2, 75, 5, 75, 75, 75]]).T
+    X = np.array([[75, 0, 75, 5, 75, 75, 75]]).T
+    print(model.predict(X))
     # print(model._func(X))
     # print(model.predict(X))
 

@@ -301,17 +301,19 @@ def apply_consistency_check_to_model(data=None, thermal_model=None, thermal_mode
 # ============ END CONSISTENCY CHECK ========
 
 if __name__ == '__main__':
-    bldg = 'south-berkeley-senior-center'
+    bldg = 'avenal-veterans-hall'
     zone_thermal_data = utils.get_data(building=bldg, days_back=150, evaluate_preprocess=False, force_reload=False)
 
-    zone, zone_data = zone_thermal_data.items()[0]
+
+    zone, zone_data = zone_thermal_data.items()[5]
     # filter to only have 5 min data
-    zone_data = zone_data[zone_data["dt"] == 5]
+    # zone_data = zone_data[zone_data["dt"] == 5]
     # zone_data = zone_data[zone_data["t_min"] != zone_data["t_max"]]
     # zone_data = zone_data[(zone_data["t_in"] > zone_data["t_next"]) & (zone_data["action"] == utils.COOLING_ACTION)]
 
     print("Evaluate zone %s" % zone)
     evaluate_zone_data(zone_data)
+    print(zone_data.index)
 
     # print(res)
     # zone_data = zone_data.drop(res)

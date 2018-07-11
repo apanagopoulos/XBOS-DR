@@ -35,10 +35,13 @@ def writeTstat(tstat, action):
 
 #Getter 
 def printTstat(tstat):
-    print("heating setpoint", tstat.heating_setpoint)
-    print("cooling setpoint", tstat.cooling_setpoint)
-    print("temperature", tstat.temperature)
-    print("override", tstat.override)
+    try:
+        print("heating setpoint", tstat.heating_setpoint)
+        print("cooling setpoint", tstat.cooling_setpoint)
+        print("temperature", tstat.temperature)
+        print("override", tstat.override)
+    except:
+        print("WARNING: for tstat %s the setpoints could not be read" % tstat)
 
 
 ######################################################################## Main Script:
@@ -46,33 +49,46 @@ def printTstat(tstat):
 #Buildings to be affected
 # buildings = ["avenal-animal-shelter", "avenal-veterans-hall", "avenal-movie-theatre", "avenal-public-works-yard", "avenal-recreation-center", "orinda-community-center", "north-berkeley-senior-center", "south-berkeley-senior-center"]
 # buildings = ["csu-dominguez-hills"]
-buildings = ["south-berkeley-senior-center", "north-berkeley-senior-center", "avenal-veterans-hall", "ciee", "orinda-community-center",
-             "hayward-station-1",
-             "hayward-station-8", "csu-dominguez-hills"]
+buildings = ["south-berkeley-senior-center",
+             "north-berkeley-senior-center",
+             "avenal-veterans-hall",
+             "ciee", "orinda-community-center",
+             "word-of-faith-cc",
+             "jesse-turner-center",
+             "orinda-community-center",
+             "avenal-recreation-center",
+             "avenal-animal-shelter", "avenal-movie-theatre", "avenal-public-works-yard",
+             "avenal-recreation-center", "berkeley-corporate-yard"]
+
+
 
 # Getting clients
 client = get_client()
 hc = HodClient("xbos/hod", client)
 
 for BUILDING in buildings:
-  print("================================================")
-  print("")
-  print("Working on building", BUILDING)
-  print("")
+    print("================================================")
+    print("")
+    print("Working on building", BUILDING)
+    print("")
 
-  query_data = hc.do_query(thermostat_query % BUILDING)["Rows"]
-  query_data = [x for x in query_data if x["?zone"]!="HVAC_Zone_Please_Delete_Me"] #TODO CHANGE THE PLEASE DELETE ME ZONE CHECK WHEN FIXED
+    query_data = hc.do_query(thermostat_query % BUILDING)["Rows"]
+    query_data = [x for x in query_data if x["?zone"]!="HVAC_Zone_Please_Delete_Me"] #TODO CHANGE THE PLEASE DELETE ME ZONE CHECK WHEN FIXED
 
-  tstats = {d["?zone"]: Thermostat(client, d["?uri"]) for d in query_data}
+    try:
+        tstats = {d["?zone"]: Thermostat(client, d["?uri"]) for d in query_data}
+    except:
+        print("Warning: Unable to get Thermostat. Aborting for this building.")
+        continue
 
-  ##### RUN
-  for zone, tstat in tstats.items():
-    writeTstat(tstat, PROGRAMMABLE)
+    ##### RUN
+    for zone, tstat in tstats.items():
+        writeTstat(tstat, PROGRAMMABLE)
 
-  # wait to let the setpoints get through
-  # time.sleep(2)
-  # Printing the data for every tstat
-  for zone, tstat in tstats.items():
+    # wait to let the setpoints get through
+    # time.sleep(2)
+    # Printing the data for every tstat
+    for zone, tstat in tstats.items():
       print("")
       print("Checking zone:", zone)
       print("Checking zone uri:", tstat._uri)

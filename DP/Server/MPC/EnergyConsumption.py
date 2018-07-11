@@ -23,18 +23,18 @@ class EnergyConsumption:
         Method that calculates cost depending on time and pricing mode
         """
 
-        if action == 'Heating' or action == '1':
+        if action == 'Heating' or action == '1' or action == 1:
             return (float(self.heat) * float(self.interval) / 60.) * float(self.prices[time])
 
-        elif action == 'Cooling' or action == '2':
+        elif action == 'Cooling' or action == '2' or action == 2:
             return (float(self.cool) * float(self.interval) / 60.) * float(self.prices[time])
         elif action == 'Ventilation':
 
             return (float(self.vent) * float(self.interval) / 60.) * float(self.prices[time])
-        elif action == 'Do Nothing' or action == '0':
+        elif action == 'Do Nothing' or action == '0' or action == 0:
             return 0
         else:
-            print("picked wrong action")
+            print("picked wrong action %s." % str(action))
             return 0
 
 
