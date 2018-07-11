@@ -168,8 +168,8 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
     # plt.setp(xticklabels, visible=False)
     plt.subplots_adjust(hspace=0.001)
     # ax3.set_xlabel('Time')
-    ax3.set_ylim(-1, 4)
-    group_labels = ['Nothing', 'Heating', 'Cooling', 'Ventilation']
+	ax3.set_ylim(-1, 6)
+	group_labels = ['Nothing', 'Heating I', 'Cooling I', 'Ventilation', 'Heating II', 'Cooling II',]
     ax3.set_yticklabels(group_labels)
     ax3.yaxis.grid()
     ax3.xaxis.grid()
