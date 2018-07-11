@@ -138,6 +138,16 @@ def get_zone_config(building, zone):
         return
     return cfg
 
+def get_zone_log(building, zone):
+    log_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + "Logs/" + zone + ".yml"
+    try:
+        with open(config_path, "r") as f:
+            cfg = yaml.load(f)
+    except:
+        print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, config_path))
+        return
+    return cfg
+
 
 # Maybe put in ThermalDataManager because of circular import.
 def get_data(building=None, client=None, cfg=None, start=None, end=None, days_back=50, evaluate_preprocess=False, force_reload=False):
@@ -380,7 +390,7 @@ def has_setpoint_changed(tstat, setpoint_data, zone, building):
 
         logfile = open("Buildings/" + building + "/Logs/" + zone + ".log", append_write)
         logfile.write(
-            "THERMOSTAT CHANGED MANUALY AT : " + datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC")
+            "THERMOSTAT CHANGED MANUALY AT : " + datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC \n")
         logfile.close()
     return flag_changed
 
