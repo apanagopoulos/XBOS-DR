@@ -139,14 +139,13 @@ def get_zone_config(building, zone):
     return cfg
 
 def get_zone_log(building, zone):
-    log_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + "Logs/" + zone + ".yml"
+    log_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + "Logs/" + zone + ".log"
     try:
-        with open(config_path, "r") as f:
-            cfg = yaml.load(f)
+         log = open(log_path, "r")# UTCTHERMOSTAT
     except:
         print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, config_path))
         return
-    return cfg
+    return log
 
 
 # Maybe put in ThermalDataManager because of circular import.

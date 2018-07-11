@@ -233,6 +233,9 @@ def getData(building, zone, date):
 		cfg = utils.get_config(building)
 		zone_cfg = utils.get_zone_config(building, zone)
 
+		zone_log = utils.get_zone_log(building, zone)
+		print zone_log
+
 		interval = cfg["Interval_Length"]
 
 		# client = utils.choose_client(cfg)
