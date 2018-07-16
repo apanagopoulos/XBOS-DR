@@ -24,7 +24,11 @@ class ParentThermalModel:
 
     @abstractmethod
     def _func(self, X, *params):
-        """The method which computes predictions given data.
+        """The method which computes predictions given data. 
+        
+        NOTE: always set self._filter_columns, which is the
+        order in which to extract the data from a pd.dataframe.
+    
         :param X: pd.df with columns (Tin, action, Tout, dt, rest of zone temperatures)
         :param *params: coefficients in the order of childs self._param_order field. If no coeff given, will use
                  child self._params.

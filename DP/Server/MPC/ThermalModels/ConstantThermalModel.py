@@ -73,8 +73,13 @@ class ConstantThermalModel(ParentThermalModel):
         Will refit the model if called with new data.
         :param X: pd.df with columns ('t_in', 'action')"
         :param y: the labels corresponding to the data. As a pd.dataframe
+        :param params: float array [no_action, all heating, all cooling]
         :return self
         """
+        filter_columns = ['t_in', 'action']
+        # give mapping from params to coefficients and to store the order in which we get the columns.
+        self._filter_columns = filter_columns
+
         assert params is not None
         no_action, heating, cooling = params
         assert cooling < no_action < heating

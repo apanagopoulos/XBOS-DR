@@ -16,7 +16,7 @@ from NormalSchedule import NormalSchedule
 
 sys.path.insert(0, './MPC')
 from Advise import Advise
-from ThermalModel import *
+from MPCThermalModel import MPCThermalModel
 # from AverageThermalModel import *
 
 sys.path.insert(0, '../Utils')

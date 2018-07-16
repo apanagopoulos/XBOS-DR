@@ -46,7 +46,7 @@ FAN = 3
 TWO_STAGE_HEATING_ACTION = 4
 TWO_STAGE_COOLING_ACTION = 5
 
-SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(__file__) # this is true for now
+SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(__file__)  # this is true for now
 
 '''
 Utility functions
