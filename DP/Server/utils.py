@@ -6,6 +6,7 @@ import datetime
 import pytz
 import yaml
 import os
+import string
 
 # be careful of circular import.
 # https://stackoverflow.com/questions/11698530/two-python-modules-require-each-others-contents-can-that-work
@@ -177,6 +178,36 @@ def get_zone_config(building, zone):
         print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, config_path))
         return
     return cfg
+
+def get_zone_log(building, zone):
+
+
+    log_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + "Logs/" + zone + ".log"
+
+	## fix for one lines
+    try:
+
+		f = open (log_path, "r")
+		log=f.read()
+		log = string.replace(log, "UTCTHERMOSTAT", "UTC\nTHERMOSTAT")
+		f.close()
+
+		f = open(log_path, 'w')
+		f.write(log)
+		f.close()
+    except:
+        print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, log_path))
+        return
+	## end of fix DELETE THIS WHEN ALL LOGS ARE FIXED!
+
+    try:
+        with open (log_path, "r") as f:
+			### fix for same line logs ###
+            log=f.readlines()
+    except:
+        print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, log_path))
+        return
+    return log
 
 
 # Maybe put in ThermalDataManager because of circular import.
@@ -420,7 +451,7 @@ def has_setpoint_changed(tstat, setpoint_data, zone, building):
 
         logfile = open("Buildings/" + building + "/Logs/" + zone + ".log", append_write)
         logfile.write(
-            "THERMOSTAT CHANGED MANUALY AT : " + datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC")
+            "THERMOSTAT CHANGED MANUALY AT : " + datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC \n")
         logfile.close()
     return flag_changed
 
@@ -566,13 +597,12 @@ if __name__ == "__main__":
     # print("inside")
     # th_data = t_man._preprocess_thermal_data(use_data, outside, True)
 
-    print(round_increment(0.21, 0.05))
 
-    # import pickle
-    # with open("u_p", "r") as f:
-    #     th = pickle.load(f)
-    #
-    # zone = "HVAC_Zone_SAC_2101"
-    # zone_data = th[zone]
-    # print(zone_data[zone_data["action"] == 5].shape)
-    # print(zone_data[zone_data["action"] == 2].shape)
+    import pickle
+    with open("u_p", "r") as f:
+        th = pickle.load(f)
+
+    zone = "HVAC_Zone_SAC_2101"
+    zone_data = th[zone]
+    print(zone_data[zone_data["action"] == 5].shape)
+    print(zone_data[zone_data["action"] == 2].shape)
