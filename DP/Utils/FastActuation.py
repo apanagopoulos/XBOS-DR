@@ -24,7 +24,7 @@ thermostat_query = """SELECT ?zone ?uri FROM  %s WHERE {
 #Preset of some actions
 COOLING_ACTION = {"heating_setpoint": 65, "cooling_setpoint": 68, "override": True, "mode": 3}
 HEATING_ACTION = {"heating_setpoint": 80, "cooling_setpoint": 95, "override": True, "mode": 3}
-NO_ACTION = {"heating_setpoint": 64, "cooling_setpoint": 75, "override": True, "mode": 3}
+NO_ACTION = {"heating_setpoint": 66, "cooling_setpoint": 73, "override": True, "mode": 3}
 PROGRAMMABLE = {"override": False}
 
 #Setter
@@ -49,16 +49,18 @@ def printTstat(tstat):
 #Buildings to be affected
 # buildings = ["avenal-animal-shelter", "avenal-veterans-hall", "avenal-movie-theatre", "avenal-public-works-yard", "avenal-recreation-center", "orinda-community-center", "north-berkeley-senior-center", "south-berkeley-senior-center"]
 # buildings = ["csu-dominguez-hills"]
-buildings = ["south-berkeley-senior-center",
-             "north-berkeley-senior-center",
-             "avenal-veterans-hall",
-             "ciee", "orinda-community-center",
-             "word-of-faith-cc",
-             "jesse-turner-center",
-             "orinda-community-center",
-             "avenal-recreation-center",
-             "avenal-animal-shelter", "avenal-movie-theatre", "avenal-public-works-yard",
-             "avenal-recreation-center", "berkeley-corporate-yard"]
+# buildings = ["south-berkeley-senior-center",
+#              "north-berkeley-senior-center",
+#              "avenal-veterans-hall",
+#              "ciee", "orinda-community-center",
+#              "word-of-faith-cc",
+#              "jesse-turner-center",
+#              "orinda-community-center",
+#              "avenal-recreation-center",
+#              "avenal-animal-shelter", "avenal-movie-theatre", "avenal-public-works-yard",
+#              "avenal-recreation-center", "berkeley-corporate-yard"]
+
+buildings = ["orinda-community-center"]
 
 
 
@@ -83,7 +85,9 @@ for BUILDING in buildings:
 
     ##### RUN
     for zone, tstat in tstats.items():
-        writeTstat(tstat, PROGRAMMABLE)
+        if zone == "HVAC_Zone_AC-4":
+            writeTstat(tstat, NO_ACTION)
+            writeTstat(tstat, PROGRAMMABLE)
 
     # wait to let the setpoints get through
     # time.sleep(2)

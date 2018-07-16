@@ -33,12 +33,14 @@ class ParentThermalModel:
         pass
 
     @abstractmethod
-    def fit(self, X, y):
+    def fit(self, X, y, params=None):
         """Needs to be called to initally fit the model. Will set self._params to coefficients.
         Will refit the model if called with new data.
         :param X: pd.df with columns ('t_in', 'action', 't_out', 'dt') and all zone temperature where all have
         to begin with "zone_temperature_" + "zone name"
         :param y: the labels corresponding to the data. As a pd.dataframe
+        :param params: Provide it with the parameters to use/guess. e.g. in constantThermalModel this will be use
+        to fit the model 
         :return self
         """
         pass
@@ -68,7 +70,7 @@ class ParentThermalModel:
 
         if should_round:
             # source for rounding: https://stackoverflow.com/questions/2272149/round-to-5-or-other-number-in-python
-            predictions = self.thermal_precision * np.round(predictions / float(self.thermal_precision))
+            predictions = utils.round_increment(predictions, self.thermal_precision)
         else:
             predictions = predictions
 

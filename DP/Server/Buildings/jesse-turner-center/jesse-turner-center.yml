@@ -7,7 +7,7 @@ Max_Actions: 400
 Pricing:
   DR: true
   DR-Finish: '18:00'
-  DR-Price: 0.87909
+  DR_Price: 0.87909
   DR_Finish: '18:00'
   DR_Start: '14:00'
   Energy_Rates: TOU-Summer

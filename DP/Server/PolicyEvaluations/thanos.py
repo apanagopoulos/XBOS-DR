@@ -1,9 +1,10 @@
+import sys
+
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-import sys
 sys.path.append("./../MPC")
 sys.path.append("./..")
 
@@ -15,8 +16,6 @@ from DataManager import DataManager
 
 from Discomfort import Discomfort
 from EnergyConsumption import EnergyConsumption
-from Occupancy import Occupancy
-from Safety import Safety
 from ThermalDataManager import ThermalDataManager
 
 import pytz
@@ -168,8 +167,9 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
     # plt.setp(xticklabels, visible=False)
     plt.subplots_adjust(hspace=0.001)
     # ax3.set_xlabel('Time')
-	ax3.set_ylim(-1, 6)
-	group_labels = ['Nothing', 'Heating I', 'Cooling I', 'Ventilation', 'Heating II', 'Cooling II',]
+    ax3.set_ylim(-1, 6)
+    group_labels = ['Nothing', 'Heating I', 'Cooling I', 'Ventilation', 'Heating II', 'Cooling II', ]
+
     ax3.set_yticklabels(group_labels)
     ax3.yaxis.grid()
     ax3.xaxis.grid()
@@ -196,10 +196,8 @@ def PlotDay(OPs, Tins, Tout, Policy, TinsUP, TinsDOWN, TinsUP2, TinsDOWN2, TinsU
 
 
 def getData(building, zone, date):
-
     """Whatever data we get should be stored.
     date: in PST"""
-
 
     # get config
     cfg = utils.get_config(building)
@@ -224,9 +222,8 @@ def getData(building, zone, date):
 
     datamanager = DataManager(cfg, zone_cfg, client, zone, now=start_utc)
 
-
     # get setpoints
-    ground_truth_setpoints_df = datamanager.thermostat_setpoints(start_utc, end_utc)[zone] # from archiver
+    ground_truth_setpoints_df = datamanager.thermostat_setpoints(start_utc, end_utc)[zone]  # from archiver
     ground_truth_setpoints_df.index = ground_truth_setpoints_df.index.tz_convert(pst_pytz)
 
     config_setpoints_df = datamanager.better_comfortband(start)
@@ -235,13 +232,11 @@ def getData(building, zone, date):
     config_setpoints = config_setpoints_df[["t_low", "t_high"]].values
     safety_setpoints = safety_setpoints_df[["t_low", "t_high"]].values
 
-
-
     # Get tstat and weather data
     thermal_data_manager = ThermalDataManager(cfg, client)
 
     inside_data, outside_data = utils.get_raw_data(building=building, client=client, cfg=cfg,
-                                      start=start_utc, end=end_utc, force_reload=True)
+                                                   start=start_utc, end=end_utc, force_reload=True)
     zone_inside_data = inside_data[zone]
     zone_inside_data.index = zone_inside_data.index.tz_convert(pst_pytz)
     outside_data = thermal_data_manager._preprocess_outside_data(outside_data.values())
@@ -260,7 +255,6 @@ def getData(building, zone, date):
 
     Policy = zone_inside_data["action"].values
 
-
     # Prepare discomfort
     discomfortManager = Discomfort(setpoints=config_setpoints)
 
@@ -273,8 +267,11 @@ def getData(building, zone, date):
         occupancy_ground = None
 
     if occupancy_ground is None:
+        print("Using the occupancy from the config file.")
         occupancy_use = occupancy_config
     else:
+        # TODO fix occupancy from archiver. 
+        print("Using the occupancy from the archiver.")
         occupancy_use = occupancy_ground
 
     occupancy_use = occupancy_use["occ"].values
@@ -287,15 +284,13 @@ def getData(building, zone, date):
         occ = occupancy_use[i]
         discomfort.append(discomfortManager.disc(t_in=tin, occ=occ, node_time=i, interval=1))
 
-
     # get consumption and cost and prices
     prices = datamanager.better_prices(start).values
     heating_consumption = zone_cfg["Advise"]["Heating_Consumption"]
     cooling_consumption = zone_cfg["Advise"]["Cooling_Consumption"]
 
-
     energy_manager = EnergyConsumption(prices, interval, now=None,
-                               heat=heating_consumption, cool=cooling_consumption)
+                                       heat=heating_consumption, cool=cooling_consumption)
     cost = []
     for i in range(len(Policy)):
         # see it as the ith minute. That's why we need the assert
@@ -306,7 +301,6 @@ def getData(building, zone, date):
 
     # Cache the data and check if already downloaded!
     OPs = occupancy_use[:1440]
-
 
     TinsUPComfortBand = config_setpoints_df["t_high"][:1440]
 
@@ -330,14 +324,13 @@ def getData(building, zone, date):
     return OPs, Tin, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp, TinsDOWNsp, Costs, Prices, Discomforts, method
 
 
-
 if __name__ == "__main__":
     building, zone = choosebuildingandzone()
     Date = datetime.datetime(year=2018, month=7, day=10)
     OPs, Tins, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp, TinsDOWNsp, Costs, Prices, Discomforts, method = getData(
         building, zone, Date)
     PlotDay(OPs, Tins, Tout, Policy, TinsUPComfortBand, TinsDOWNComfortBand, TinsUPSafety, TinsDOWNSafety, TinsUPsp,
-        TinsDOWNsp, Costs, Prices, Discomforts, method)
+            TinsDOWNsp, Costs, Prices, Discomforts, method)
 
     # import datetime
     # getData("avenal-recreation-center", zone="HVAC_Zone_Tech_Center", date=datetime.datetime(year=2018, day=10, month=7, minute=12, hour=12))

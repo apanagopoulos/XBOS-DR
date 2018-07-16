@@ -434,3 +434,8 @@ if __name__ == '__main__':
 
     # Update to make the timezone more friendly. for now everything in UTC time except the returned data.
 
+    # TODO Make it such that i don't loose a minute in data preprocessing for every datapoint. could start at the
+    # end of the interval each time by redoing the loop a bit. While instead of for loop? only counts for contigious
+    # actions. If we have chnage of actions, it seems like we need to drop datapoints? Ask gabe for preprocessing and
+    # if there is a better way to get the data since then we might not loose some values.
+

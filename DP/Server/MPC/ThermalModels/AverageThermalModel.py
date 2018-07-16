@@ -128,7 +128,10 @@ class AverageThermalModel(ParentThermalModel):
                 print("Cooling: %f " % cooling_average)
 
             return consistency_flag
-        assert average_quality_check(*self._params)
+
+        # TODO implement for two stage
+        # checks consistency of this thermal model.
+        average_quality_check(*self._params)
 
         return self
 

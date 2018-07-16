@@ -57,7 +57,7 @@ def evaluate_zone_data(data, find_single_actions=False):
 
     def get_delta_mean(action_data):
         # get the mean change of temperature from now to next.
-        return np.mean((action_data["t_next"] - action_data["t_in"]) / action_data["dt"])
+        return np.mean(action_data["t_next"] - action_data["t_in"])
 
     mean_cooling_delta = get_delta_mean(cooling_data)
     mean_heating_delta = get_delta_mean(heating_data)
@@ -301,19 +301,18 @@ def apply_consistency_check_to_model(data=None, thermal_model=None, thermal_mode
 # ============ END CONSISTENCY CHECK ========
 
 if __name__ == '__main__':
-    bldg = 'avenal-veterans-hall'
+    bldg, zone = utils.choose_building_and_zone()
     zone_thermal_data = utils.get_data(building=bldg, days_back=150, evaluate_preprocess=False, force_reload=False)
 
 
-    zone, zone_data = zone_thermal_data.items()[5]
+    zone_data = zone_thermal_data[zone]
     # filter to only have 5 min data
-    # zone_data = zone_data[zone_data["dt"] == 5]
+    zone_data = zone_data[zone_data["dt"] == 5]
     # zone_data = zone_data[zone_data["t_min"] != zone_data["t_max"]]
     # zone_data = zone_data[(zone_data["t_in"] > zone_data["t_next"]) & (zone_data["action"] == utils.COOLING_ACTION)]
 
     print("Evaluate zone %s" % zone)
     evaluate_zone_data(zone_data)
-    print(zone_data.index)
 
     # print(res)
     # zone_data = zone_data.drop(res)
@@ -321,10 +320,10 @@ if __name__ == '__main__':
     # evaluate_zone_data(zone_data)
 
 
-    print("Consistency check for zone %s" % zone)
-    from ThermalModel import ThermalModel
-    thermal_model = ThermalModel().fit(zone_data, zone_data["t_next"])
-    apply_consistency_check_to_model(thermal_model=thermal_model)
-
+    # print("Consistency check for zone %s" % zone)
+    # from ThermalModel import ThermalModel
+    # thermal_model = ThermalModel().fit(zone_data, zone_data["t_next"])
+    # apply_consistency_check_to_model(thermal_model=thermal_model)
+    #
 
 

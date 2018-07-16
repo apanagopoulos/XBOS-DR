@@ -50,6 +50,38 @@ SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(__file__) # this is true for
 '''
 Utility functions
 '''
+# ============ BUILDING AND ZONE GETTER ========
+def choose_building_and_zone():
+    print "-----------------------------------"
+    print "Buildings:"
+    print "-----------------------------------"
+    root, dirs, files = os.walk(SERVER_DIR_PATH + "/Buildings/").next()
+    for index, building in enumerate(dirs, start=1):
+        print index, building
+    print "-----------------------------------"
+    index = input("Please choose a building (give a number):") - 1
+    building = dirs[index]
+    print "-----------------------------------"
+    print ""
+    print "-----------------------------------"
+    print "	" + str(building)
+    print "-----------------------------------"
+    print "-----------------------------------"
+    print "Zones:"
+    print "-----------------------------------"
+    root, dirs, files = os.walk("../Buildings/" + str(building) + "/ZoneConfigs").next()
+    for index, zones in enumerate(files, start=1):
+        print index, zones[:-4]
+    print "-----------------------------------"
+    index = input("Please choose a zone (give a number):") - 1
+    zone = files[index][:-4]
+    print "-----------------------------------"
+    print "-----------------------------------"
+    print "	" + str(building)
+    print "	" + str(zone)
+    print "-----------------------------------"
+    return building, zone
+
 # ============ DATE FUNCTIONS ============
 
 def get_utc_now():
@@ -95,6 +127,14 @@ def get_mdal_datetime_to_string(date_object):
 
 
 # ============ DATA FUNCTIONS ============
+
+def round_increment(data, precision=0.05):
+    """Round to nearest increment of precision.
+    :param data: np.array of floats or single float
+    :param precision: (float) the increment to round to
+    :return (np.array or float) of rounded floats."""
+    # source for rounding: https://stackoverflow.com/questions/2272149/round-to-5-or-other-number-in-python
+    return precision * np.round(data / float(precision))
 
 def is_cooling(action_data):
     """Returns boolen area of actions which were cooling (either two or single stage).
@@ -182,7 +222,7 @@ def get_data(building=None, client=None, cfg=None, start=None, end=None, days_ba
             thermal_data = pickle.load(f)
     except:
         if client is None:
-            client = get_client()
+            client = choose_client(cfg)
         dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
         thermal_data = dataManager.thermal_data(start=start, end=end, evaluate_preprocess=evaluate_preprocess)
         with open(path, "wb") as f:
@@ -526,12 +566,13 @@ if __name__ == "__main__":
     # print("inside")
     # th_data = t_man._preprocess_thermal_data(use_data, outside, True)
 
+    print(round_increment(0.21, 0.05))
 
-    import pickle
-    with open("u_p", "r") as f:
-        th = pickle.load(f)
-
-    zone = "HVAC_Zone_SAC_2101"
-    zone_data = th[zone]
-    print(zone_data[zone_data["action"] == 5].shape)
-    print(zone_data[zone_data["action"] == 2].shape)
+    # import pickle
+    # with open("u_p", "r") as f:
+    #     th = pickle.load(f)
+    #
+    # zone = "HVAC_Zone_SAC_2101"
+    # zone_data = th[zone]
+    # print(zone_data[zone_data["action"] == 5].shape)
+    # print(zone_data[zone_data["action"] == 2].shape)
