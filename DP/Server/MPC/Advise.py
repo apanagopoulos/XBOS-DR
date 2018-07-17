@@ -24,25 +24,31 @@ class Node:
     # this is a Node of the graph for the shortest path
     """
 
-    def __init__(self, temps, time):
+    def __init__(self, temps, time, model_type=None):
         self.temps = temps
         self.time = time
+        # if we choose to debug in advise
+        self.model_type = model_type
 
     def __hash__(self):
         return hash((' '.join(str(e) for e in self.temps), self.time))
 
     def __eq__(self, other):
+        # TODO should we make two nodes equal if not predictd by same model? Yes, so we can make use of DP. Still, ask thanos.
         return isinstance(other, self.__class__) \
                and self.temps == other.temps \
                and self.time == other.time
 
     def __repr__(self):
+        # if self.model_type is not None:
+        #     return "{0}-{1}-{2}".format(self.time, self.temps, self.model_type)
+        # else:
         return "{0}-{1}".format(self.time, self.temps)
 
 
 class EVA:
     def __init__(self, current_time, balance_lambda, pred_window, interval, discomfort,
-                 thermal, occupancy, safety, energy, zones, root=Node([75], 0), noZones=1):
+                 thermal, occupancy, safety, energy, zones, root=Node([75], 0), noZones=1, debug=False):
         """
         Constructor of the Evaluation Class
         The EVA class contains the shortest path algorithm and its utility functions
@@ -59,6 +65,7 @@ class EVA:
         energy : EnergyConsumption
         root : Node
         noZones : int
+        debug: Mainly tells us whether to store the thermal_model_type of the predictions in each node.
         """
         # initialize class constants
         # Daniel added TODO Seriously come up with something better to handle how assign zone to predict. Right now only doing it this way because we want to generalize to multiclass.
@@ -81,6 +88,8 @@ class EVA:
         self.energy = energy
 
         self.g.add_node(root, usage_cost=np.inf, best_action=None, best_successor=None)
+
+        self.debug = debug
 
     def get_real_time(self, node_time):
         """
@@ -119,20 +128,37 @@ class EVA:
 
             # predict temperature and energy cost of action
             new_temperature = []
+            if self.debug:
+                model_type = []
             consumption = []
             for i in range(self.noZones):
                 # Note: we are assuming self.zones and self.temps are in right order.
-                new_temperature.append(self.th.predict(t_in=from_node.temps[i],
+                # To get model types.
+                if self.debug:
+                    temperatures, model_types = self.th.predict(t_in=from_node.temps[i],
                                                        action=int(action[i]),
-                                                       time=self.get_real_time(from_node.time).hour)[
-                                           0])  # index because self.th.predict returns array.
+                                                       time=self.get_real_time(from_node.time).hour, debug=True)
+                    model_type.append(model_types[0])  # index because self.th.predict returns array.
+                else:
+                    temperatures = self.th.predict(t_in=from_node.temps[i],
+                                                       action=int(action[i]),
+                                                       time=self.get_real_time(from_node.time).hour, debug=False)
+
+                new_temperature.append(temperatures[0])  # index because self.th.predict returns array.
                 consumption.append(self.energy.calc_cost(action[i], from_node.time / self.interval))
 
             # create the node that describes the predicted data
-            new_node = Node(
-                temps=new_temperature,
-                time=from_node.time + self.interval
-            )
+            if self.debug:
+                new_node = Node(
+                    temps=new_temperature,
+                    time=from_node.time + self.interval,
+                    model_type=model_type
+                )
+            else:
+                new_node = Node(
+                    temps=new_temperature,
+                    time=from_node.time + self.interval
+                )
 
             if self.safety.safety_check(new_temperature, new_node.time / self.interval) and len(action_set) > 1:
                 continue
@@ -198,7 +224,7 @@ class Advise:
     def __init__(self, zones, current_time, occupancy_data, zone_temperature, thermal_model,
                  prices, lamda, dr_lamda, dr, interval, predictions_hours, heating_cons, cooling_cons,
                  vent_cons,
-                 thermal_precision, occ_obs_len_addition, setpoints, sensors, safety_constraints):
+                 thermal_precision, occ_obs_len_addition, setpoints, sensors, safety_constraints, debug=False):
         # TODO do something with dr_lambda and vent const (they are added since they are in the config file.)
         # TODO Also, thermal_precision
         self.current_time = current_time
@@ -213,7 +239,11 @@ class Advise:
                                    heat=heating_cons, cool=cooling_cons)
 
         Zones_Starting_Temps = zone_temperature
-        self.root = Node(temps=Zones_Starting_Temps, time=0)
+        if debug:
+            self.root = Node(temps=Zones_Starting_Temps, time=0, model_type=["Initial Temperature"])
+        else:
+            self.root = Node(temps=Zones_Starting_Temps, time=0)
+
         temp_l = dr_lamda if dr else lamda
 
         print("Lambda being used for zone %s is of value %s" % (zones[0], str(temp_l)))
@@ -230,7 +260,8 @@ class Advise:
             safety=safety,
             energy=energy,
             root=self.root,
-            zones=zones
+            zones=zones,
+            debug=debug
         )
 
     def advise(self):
@@ -268,63 +299,44 @@ if __name__ == '__main__':
     from DataManager import DataManager
 
     from xbos import get_client
-    from ControllerDataManager import ControllerDataManager
-    from MPC.ThermalModels.AverageThermalModel import AverageMPCThermalModel
+    from MPC.ThermalModels.MPCThermalModel import MPCThermalModel
 
     import time
 
-    ZONE = "HVAC_Zone_AC-1"
-    building = sys.argv[1]
-    naive_now = datetime.datetime.strptime("2018-06-22 15:20:44", "%Y-%m-%d %H:%M:%S")
-    now =  pytz.timezone("UTC").localize(naive_now)
+    choose_buildings = False
+    if choose_buildings:
+        building, zone = utils.choose_building_and_zone()
+    else:
+        building, zone = "avenal-veterans-hall", "HVAC_Zone_AC-4"
+
+
+
+    # naive_now = datetime.datetime.strptime("2018-06-22 15:20:44", "%Y-%m-%d %H:%M:%S")
+    # now =  pytz.timezone("UTC").localize(naive_now)
+    now = utils.get_utc_now()
 
     # TODO check for comfortband height and whether correctly implemented
     # read from config file
-    try:
-        yaml_filename = "../Buildings/%s/%s.yml" % (sys.argv[1], sys.argv[1])
-    except:
-        sys.exit("Please specify the configuration file as: python2 controller.py config_file.yaml")
+    cfg = utils.get_config(building)
 
-
-    with open(yaml_filename, 'r') as ymlfile:
-        cfg = yaml.load(ymlfile)
-
-    if cfg["Server"]:
-        client = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
-    else:
-        client = get_client()
+    client = utils.choose_client() # not for server use here.
 
     # --- Thermal Model Init ------------
     # initialize and fit thermal model
-    import pickle
 
-    try:
-        with open("../Thermal Data/demo_" + cfg["Building"], "r") as f:
-            thermal_data = pickle.load(f)
-    except:
-        controller_dataManager = ControllerDataManager(cfg, client)
-        thermal_data = controller_dataManager.thermal_data(days_back=50)
-        with open("../Thermal Data/demo_" + cfg["Building"], "wb") as f:
-            pickle.dump(thermal_data, f)
-
-    # Concat zone data to put all data together and filter such that all datapoints have dt != 1
-    building_thermal_data = utils.concat_zone_data(thermal_data)
-    filtered_building_thermal_data = building_thermal_data[building_thermal_data["dt"]!=1]
-
+    all_data = utils.get_data(building, force_reload=False, evaluate_preprocess=False, days_back=150)
 
     # TODO INTERVAL SHOULD NOT BE IN config_file.yml, THERE SHOULD BE A DIFFERENT INTERVAL FOR EACH ZONE
     # TODO, NOTE, We are training on the whole building.
-    zone_thermal_models = {zone: AverageMPCThermalModel(zone, filtered_building_thermal_data, interval_length=cfg["Interval_Length"],
+    zone_thermal_models = {thermal_zone: MPCThermalModel(zone, zone_data[zone_data['dt'] == 5], interval_length=cfg["Interval_Length"],
                                                  thermal_precision=cfg["Thermal_Precision"])
-                           for zone, zone_thermal_data in thermal_data.items()}
+                           for thermal_zone, zone_data in all_data.items()}
     print("Trained Thermal Model")
     # --------------------------------------
 
-    with open("../Buildings/" + cfg["Building"] + "/ZoneConfigs/" + ZONE + ".yml", 'r') as ymlfile:
-        advise_cfg = yaml.load(ymlfile)
+    advise_cfg = utils.get_zone_config(building, zone)
 
-
-    dataManager = DataManager(cfg, advise_cfg, client, ZONE, now=now)
+    dataManager = DataManager(cfg, advise_cfg, client, zone, now=now)
     safety_constraints = dataManager.safety_constraints()
     prices = dataManager.prices()
     building_setpoints = dataManager.building_setpoints()
@@ -332,11 +344,16 @@ if __name__ == '__main__':
     temperature = 67.8
     DR = False
 
-    adv = Advise([ZONE],  # array because we might use more than one zone. Multiclass approach.
+    # set outside temperatures and zone temperatures for each zone.
+    for thermal_zone, zone_thermal_model in zone_thermal_models.items():
+        zone_thermal_model.set_weather_predictions([70] * 24)
+        zone_thermal_model.set_temperatures_and_fit({temp_thermal_zone: 70 for temp_thermal_zone in zone_thermal_models.keys()})
+
+    adv = Advise([zone],  # array because we might use more than one zone. Multiclass approach.
                  now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])),
                  dataManager.preprocess_occ(),
                  [temperature],
-                 zone_thermal_models[ZONE],
+                 zone_thermal_models[zone],
                  prices,
                  advise_cfg["Advise"]["General_Lambda"],
                  advise_cfg["Advise"]["DR_Lambda"],
@@ -355,7 +372,7 @@ if __name__ == '__main__':
     adv_start = time.time()
     adv.advise()
     adv_end = time.time()
-
-    Debugger.debug_print(now, building, ZONE, adv, safety_constraints, prices, building_setpoints, adv_end - adv_start, file=False)
-    adv.g_plot(ZONE)
+    print([n.model_type[0] for n in adv.path])
+    Debugger.debug_print(now, building, zone, adv, safety_constraints, prices, building_setpoints, adv_end - adv_start, file=False)
+    # adv.g_plot(ZONE)
 

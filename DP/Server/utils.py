@@ -149,8 +149,8 @@ def is_heating(action_data):
     return (action_data == HEATING_ACTION) | (action_data == TWO_STAGE_HEATING_ACTION)
 
 
-def choose_client(cfg):
-    if cfg["Server"]:
+def choose_client(cfg=None):
+    if cfg is not None and cfg["Server"]:
         client = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
     else:
         client = get_client()
@@ -436,23 +436,6 @@ def has_setpoint_changed(tstat, setpoint_data, zone, building):
         flag_changed = True
         print(WARNING_MSG % ("heating setpoint", zone, tstat.heating_setpoint, setpoint_data["heating_setpoint"]))
 
-    # write override false so the local schedules can take over again.
-    if flag_changed:
-
-        set_override_false(tstat)
-        import os
-        if not os.path.exists("Buildings/" + building + "/Logs"):
-            os.makedirs("Buildings/" + building + "/Logs")
-
-        if os.path.exists("Buildings/" + building + "/Logs/" + zone + ".log"):
-            append_write = 'a'  # append if already exists
-        else:
-            append_write = 'w'  # make a new file if not
-
-        logfile = open("Buildings/" + building + "/Logs/" + zone + ".log", append_write)
-        logfile.write(
-            "THERMOSTAT CHANGED MANUALY AT : " + datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC \n")
-        logfile.close()
     return flag_changed
 
 

@@ -44,7 +44,7 @@ def create_line(curr_time, main_msg, side_msg=None):
     return msg
 
 
-def mpc_log(building, zone, current_time, interval, is_mpc, is_schedule, mpc_lambda, expansion, shut_down_system,
+def mpc_log(building, zone, current_time, interval, is_mpc, is_schedule, mpc_lambda=-1, expansion=-1, shut_down_system=False,
             system_shut_down_msg="Manual Setpoint Change"):
     """Logs mpc start and end times and lambda.
     :param building: string
@@ -54,6 +54,7 @@ def mpc_log(building, zone, current_time, interval, is_mpc, is_schedule, mpc_lam
     # TODO get interval in more than minutes maybe? Maybe timedelta object
     # TODO maybe more than interval? What if shortest path takes too long to run
     assert not (is_mpc and is_schedule)
+    assert not (mpc_lambda == -1 and expansion == -1)
 
     path = SERVER_PATH + "/Buildings/" + building + "/" + "mpc_" + zone + ".log"
 
@@ -170,4 +171,5 @@ if __name__ == "__main__":
 
 
     time.sleep(30)
+    
     mpc_log(BUILDING, ZONE, utils.get_utc_now(), 0.25, True, False, 0.70, 0, False)

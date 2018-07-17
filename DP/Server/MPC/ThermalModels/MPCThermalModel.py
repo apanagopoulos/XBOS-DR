@@ -14,15 +14,17 @@ from AverageThermalModel import AverageThermalModel
 from ConstantThermalModel import ConstantThermalModel
 
 
-class MPCThermalModel():
+class MPCThermalModel:
     """Class specifically designed for the MPC process. A child class of ThermalModel with functions
-        designed to simplify usage."""
+        designed to simplify usage.
+        
+        NOTE: when predicting will always round."""
 
     def __init__(self, zone, thermal_data, interval_length, thermal_precision=0.05, is_two_stage=False):
         """
         :param zone: The zone this Thermal model is meant for. 
         :param thermal_data: pd.df thermal data for zone (as preprocessed by ControllerDataManager). Only used for fitting.
-        :param interval_length: (int) Number of minutes between
+        :param interval_length: (int) Number of minutes between controls.
         :param thermal_precision: (float) The increment to which to round predictions to. (e.g. 1.77 becomes 1.75
         :param is_two_stage: (bool) Whether this for a two stage thermal model. Important for consistency check.
          and 4.124 becomes 4.10)
@@ -37,6 +39,7 @@ class MPCThermalModel():
 
         # the constants to use for the constant thermal model. It will add this constant to t_in to get t_next.
         # Making sure we are adding increments for thermal precision to make use of pruning in the DP graph.
+        # TODO Get variable constants.
         no_action_constant = utils.round_increment(0, precision=thermal_precision)
         heating_constant = utils.round_increment(0.5, precision=thermal_precision)
         cooling_constant = utils.round_increment(-0.5, precision=thermal_precision)
@@ -84,7 +87,7 @@ class MPCThermalModel():
 
         return pd.DataFrame(X, index=[0])
 
-    def set_temperatures_and_fit(self, curr_zone_temperatures, interval):
+    def set_temperatures_and_fit(self, curr_zone_temperatures, interval=15):
         """
         performs one update step for the thermal model and
         stores curr temperature for every zone. Call whenever we are starting new interval.
@@ -203,7 +206,7 @@ class MPCThermalModel():
         return sensibility_filter.values
 
     # TODO right now only one datapoint is being predicted. Extend to more. Consistecy check works for arbitrary data.
-    def predict(self, t_in, action, time=None, outside_temperature=None, interval=None):
+    def predict(self, t_in, action, time=None, outside_temperature=None, interval=None, debug=False):
         """
         Predicts temperature for zone given.
         :param t_in: 
@@ -212,7 +215,9 @@ class MPCThermalModel():
         :param interval: 
         :param time: the hour index for self.weather_predictions. 
         TODO understand how we can use hours if we look at next days .(i.e. horizon extends over midnight.)
-        :return: (array) predictions in order
+        :param debug: wether to debug, meaning return the type of thermal model that causes each prediction.
+        :return: not debug: (np.array) predictions in order. 
+                 debug: (np.array) predictions in order, (np.array dtype=object/strings) thermal_model types 
         """
         if interval is None:
             interval = self.interval
@@ -232,6 +237,10 @@ class MPCThermalModel():
         thermal_model_sensibility_filter = self._sensibility_test(X, self.thermal_model)
         thermal_model_filter = thermal_model_consistency_filter & thermal_model_sensibility_filter
 
+        # identify all the elements that are predicted by thermal_model
+        model_types = np.array(thermal_model_filter.shape, dtype=object)
+        model_types[thermal_model_filter] = "thermal_model"
+
         # if not all thermal_model predictions are sensible and consistent
         if not all(thermal_model_filter):
             thermal_model_inconsistent_data = X[thermal_model_filter == 0]
@@ -240,6 +249,10 @@ class MPCThermalModel():
                                                                                     self.average_thermal_model)
             average_thermal_model_sensibility_filter = self._sensibility_test(X, self.average_thermal_model)
             average_thermal_model_filter = average_thermal_model_consistency_filter & average_thermal_model_sensibility_filter
+
+            # identify all the elements that are predicted by average thermal_model
+            average_model_types = np.array(average_thermal_model_filter.shape, dtype=object)
+            average_model_types[average_thermal_model_filter] = "average_thermal_model"
 
             # if not all average_thermal_model predictions are sensible and consistent
             if not all(average_thermal_model_filter):
@@ -260,8 +273,17 @@ class MPCThermalModel():
                 average_thermal_model_predictions[
                     average_thermal_model_filter == 0] = constant_thermal_model_predictions
 
+                # identify all the elements that are predicted by constant thermal_model
+                average_model_types[average_thermal_model_filter == 0] = "constant_model"
+
             # make thermal model consistent by using the corrected average thermal model predictions
             thermal_model_predictions[thermal_model_filter == 0] = average_thermal_model_predictions
+
+            # Combine all prediction types
+            model_types[thermal_model_filter == 0] = average_model_types
+
+        if debug:
+            return thermal_model_predictions, model_types
 
         return thermal_model_predictions
 
@@ -322,7 +344,7 @@ if __name__ == "__main__":
     mpc_thermal_model.set_temperatures_and_fit(zone_temps, 0)
     # print(zone_data[0 == mpc_thermal_model._consistency_test(zone_data, mpc_thermal_model.thermal_model)].values[0])
     # print(mpc_thermal_model.thermal_model._params)
-    print(mpc_thermal_model.predict(zone_data))
-    # prediction = mpc_thermal_model.predict(70, 1, outside_temperature=72)
+    # print(mpc_thermal_model.predict(zone_data))
+    prediction = mpc_thermal_model.predict(70, 1, outside_temperature=72, debug=True)
 
     print(prediction)

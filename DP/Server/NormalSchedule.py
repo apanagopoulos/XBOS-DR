@@ -16,6 +16,7 @@ class NormalSchedule:
         :param t_stat: 
         :param advise_cfg: 
         :param now: in UTC time. If None (so no now is passed), take the current time. 
+        
         """
         self.cfg = cfg
         self.advise_cfg = advise_cfg
@@ -27,8 +28,12 @@ class NormalSchedule:
         self.zone = advise_cfg["Zone"]
 
     # in case that the mpc doesnt work properly run this
-    def normal_schedule(self):
-
+    def normal_schedule(self, debug=False):
+        """
+        
+        :param debug: Whether to actuate tstat.
+        :return: 
+        """
         def in_between(now, start, end):
             if start < end:
                 return start <= now < end
@@ -86,7 +91,8 @@ class NormalSchedule:
 
         for i in range(self.advise_cfg["Advise"]["Thermostat_Write_Tries"]):
             try:
-                self.tstat.write(p)
+                if not debug:
+                    self.tstat.write(p)
                 print("For zone: %s writing Baseline: %s" % (self.zone, str(p)))
                 break
             except:

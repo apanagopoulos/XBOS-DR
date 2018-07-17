@@ -24,15 +24,18 @@ sys.path.insert(0, '../Utils')
 sys.path.append("./Lights")
 import Debugger
 import lights
+import MPCLogger
 
 from xbos import get_client
 from xbos.services.hod import HodClient
 
 
 
+
+
 # TODO set up a moving average for how long it took for action to take place.
 # the main controller
-def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building):
+def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building, debug=False):
     """
     
     :param cfg:
@@ -41,6 +44,7 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building)
     :param client:
     :param thermal_model:
     :param zone:
+    :param debug: wether to actuate the tstat.
     :return: boolean, dict. Success Boolean indicates whether writing action has succeeded. Dictionary {cooling_setpoint: float,
     heating_setpoint: float, override: bool, mode: int} and None if success boolean is flase.
     """
@@ -186,7 +190,8 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building)
     # try to commit the changes to the thermostat, if it doesnt work 10 times in a row ignore and try again later
     for i in range(advise_cfg["Advise"]["Thermostat_Write_Tries"]):
         try:
-            # tstat.write(p)
+            if not debug:
+                tstat.write(p)
             thermal_model.set_last_action(
                 action)  # TODO Document that this needs to be set after we are sure that writing has succeeded.
             break
@@ -202,7 +207,17 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building)
 
 
 class ZoneThread(threading.Thread):
-    def __init__(self, cfg_filename, tstats, zone, client, thermal_model, building):
+    def __init__(self, cfg_filename, tstats, zone, client, thermal_model, building, debug=False):
+        """
+        
+        :param cfg_filename: 
+        :param tstats: 
+        :param zone: 
+        :param client: 
+        :param thermal_model: 
+        :param building: 
+        :param debug: Whether to actuate tstats.
+        """
         threading.Thread.__init__(self)
         self.cfg_filename = cfg_filename
         self.tstats = tstats
@@ -210,8 +225,13 @@ class ZoneThread(threading.Thread):
         self.client = client
         self.building = building
         self.thermal_model = thermal_model
+        self.debug = debug
 
     def run(self):
+        """
+        :return: 
+        """
+
         starttime = time.time()
         action_data = None
         while True:
@@ -229,7 +249,8 @@ class ZoneThread(threading.Thread):
             if advise_cfg["Advise"]["Actuate"]:
                 start = advise_cfg["Advise"]["Actuate_Start"]
                 end = advise_cfg["Advise"]["Actuate_End"]
-                now = utils.get_utc_now().astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])).time()
+                now_datetime =  utils.get_utc_now().astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"]))
+                now = now_datetime.time()
                 if utils.in_between(now=now, start=utils.get_time_datetime(start), end=utils.get_time_datetime(end)):
                     actuate = True
                 else:
@@ -254,30 +275,38 @@ class ZoneThread(threading.Thread):
                     with open("Buildings/" + cfg["Building"] + "/ZoneConfigs/" + self.zone + ".yml", 'wb') as ymlfile:
                         yaml.dump(advise_cfg, ymlfile)
 
-
+            # TODO MASSIVE FIND DR LAMBDA AND EXPANSION THAT WILL BE USED FOR THE LOGGER.
             if actuate:
                 print("Note: Actuating zone %s." % self.zone)
                 normal_schedule_succeeded = None  # initialize
 
+                go_to_normal_schedule = not advise_cfg["Advise"]["MPC"]
                 if advise_cfg["Advise"]["MPC"]:
                     # Run MPC. Try up to advise_cfg["Advise"]["Thermostat_Write_Tries"] to find and write action.
                     count = 0
                     succeeded = False
-                    while not succeeded:
+                    while not succeeded and not go_to_normal_schedule:
                         succeeded, action_data = hvac_control(cfg, advise_cfg, self.tstats, self.client, self.thermal_model,
-                                                              self.zone, self.building)
+                                                              self.zone, self.building, debug=self.debug)
                         if not succeeded:
                             time.sleep(10)
                             if count == advise_cfg["Advise"]["Thermostat_Write_Tries"]:
                                 print("Problem with MPC, entering normal schedule.")
-                                normal_schedule = NormalSchedule(cfg, self.tstats[self.zone], advise_cfg)
-                                normal_schedule_succeeded, action_data = normal_schedule.normal_schedule()
-                                break
+                                go_to_normal_schedule = True
                             count += 1
-                else:
+                    # Log this action.
+                    if succeeded:
+                        MPCLogger.mpc_log(building, zone, now_datetime, float(cfg["Interval_Length"]), is_mpc=True, is_schedule=False,
+                                          mpc_lambda=0.995, shut_down_system=False)
+
+                if go_to_normal_schedule:
                     # go into normal schedule
                     normal_schedule = NormalSchedule(cfg, self.tstats[self.zone], advise_cfg)
-                    normal_schedule_succeeded, action_data = normal_schedule.normal_schedule()
+                    normal_schedule_succeeded, action_data = normal_schedule.normal_schedule(debug=self.debug)
+                    # Log this action.
+                    if normal_schedule_succeeded:
+                        MPCLogger.mpc_log(building, zone, now_datetime, float(cfg["Interval_Length"]), is_mpc=False, is_schedule=True,
+                                  expansion=2, shut_down_system=False)
 
                 # TODO if normal schedule fails then real problems
                 if normal_schedule_succeeded is not None and not normal_schedule_succeeded:
@@ -292,6 +321,14 @@ class ZoneThread(threading.Thread):
             if actuate:
                 # end program if setpoints have been changed. (If not writing to tstat we don't want this)
                 if action_data is not None and utils.has_setpoint_changed(self.tstats[self.zone], action_data, self.zone, self.building):
+                    # Set the override to false for the thermostat so the local schedules can take over again.
+                    utils.set_override_false(tstat)
+
+                    # Tell the logger to record this setpoint change.
+                    MPCLogger.mpc_log(self.building, self.zone, utils.get_utc_now(), float(cfg["Interval_Length"]),
+                                      is_mpc=False, is_schedule=False, shut_down_system=True,
+                            system_shut_down_msg="Manual Setpoint Change")
+
                     print("Ending program for zone %s due to manual setpoint changes. \n" % self.zone)
                     return
 
@@ -336,7 +373,7 @@ if __name__ == '__main__':
             # print(filtered_zone_data.shape)
             if zone != "HVAC_Zone_Please_Delete_Me":
                 zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
-                                                        interval_length=15, thermal_precision=0.025)
+                                                        interval_length=15, thermal_precision=0.1)
     else:
         zone_thermal_models = {}
         for zone in tstats.keys():
@@ -351,7 +388,7 @@ if __name__ == '__main__':
     for zone, tstat in tstats.items():
         # TODO only because we want to only run on the basketball courts.
         if building != "jesse-turner-center" or "Basketball" in zone:
-            thread = ZoneThread(yaml_filename, tstats, zone, client, zone_thermal_models[zone], cfg["Building"])
+            thread = ZoneThread(yaml_filename, tstats, zone, client, zone_thermal_models[zone], cfg["Building"], debug=True)
             thread.start()
             threads.append(thread)
 
