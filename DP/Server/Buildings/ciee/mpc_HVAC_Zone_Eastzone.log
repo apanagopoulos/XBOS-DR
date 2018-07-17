@@ -1,42 +1,22 @@
-2018-07-17 14:43:54 UTC;System on
+2018-07-17 15:11:30 UTC , System On
 
-2018-07-17 14:43:54 UTC;MPC started-lambda=0.950000
+2018-07-17 15:11:30 UTC , MPC started , lambda=0.950000
 
-2018-07-17 14:43:59 UTC;MPC updated-lambda=0.700000
+2018-07-17 15:11:30 UTC , MPC updated , lambda=0.700000
 
-2018-07-17 14:44:38 UTC;MPC started-lambda=0.950000
+2018-07-17 15:11:30 UTC , Expansion started , Expansion=10.000000
 
-2018-07-17 14:44:38 UTC;MPC updated-lambda=0.950000
+2018-07-17 15:11:30 UTC , System Off , Manual Setpoint Change
 
-2018-07-17 14:44:38 UTC;MPC started-lambda=0.700000
+2018-07-17 15:11:30 UTC , System On
 
-2018-07-17 14:44:38 UTC;MPC updated-lambda=0.700000
+2018-07-17 15:11:30 UTC , Expansion started , Expansion=10.000000
 
-2018-07-17 14:44:38 UTC;Expansion started-Expansion=10.000000
+2018-07-17 15:11:30 UTC , System Off , System did not shut off properly
 
-2018-07-17 14:44:38 UTC;Expansion updated-Expansion=20.000000
+2018-07-17 15:12:00 UTC , System On
 
-2018-07-17 14:44:38 UTC;System Off
+2018-07-17 15:12:00 UTC , MPC started , lambda=0.700000
 
-2018-07-17 14:45:08 UTC;MPC started-lambda=0.700000
-
-2018-07-17 14:45:08 UTC;System Off
-
-2018-07-17 14:48:53 UTC;System On
-
-2018-07-17 14:48:53 UTC;MPC started-lambda=0.950000
-
-2018-07-17 14:48:53 UTC;MPC updated-lambda=0.700000
-
-2018-07-17 14:48:53 UTC;Expansion started-Expansion=10.000000
-
-2018-07-17 14:48:53 UTC;Expansion updated-Expansion=20.000000
-
-2018-07-17 14:48:53 UTC;System Off
-
-2018-07-17 14:49:23 UTC;System On
-
-2018-07-17 14:49:23 UTC;MPC started-lambda=0.700000
-
-2018-07-17 14:49:23 UTC;Placeholder
+2018-07-17 15:12:00 UTC , Placeholder
 
