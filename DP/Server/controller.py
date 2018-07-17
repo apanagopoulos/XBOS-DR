@@ -249,7 +249,8 @@ class ZoneThread(threading.Thread):
             if advise_cfg["Advise"]["Actuate"]:
                 start = advise_cfg["Advise"]["Actuate_Start"]
                 end = advise_cfg["Advise"]["Actuate_End"]
-                now_datetime =  utils.get_utc_now().astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"]))
+                utc_now = utils.get_utc_now()
+                now_datetime =  utc_now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"]))
                 now = now_datetime.time()
                 if utils.in_between(now=now, start=utils.get_time_datetime(start), end=utils.get_time_datetime(end)):
                     actuate = True
@@ -296,7 +297,7 @@ class ZoneThread(threading.Thread):
                             count += 1
                     # Log this action.
                     if succeeded:
-                        MPCLogger.mpc_log(building, zone, now_datetime, float(cfg["Interval_Length"]), is_mpc=True, is_schedule=False,
+                        MPCLogger.mpc_log(building, self.zone, utc_now, float(cfg["Interval_Length"]), is_mpc=True, is_schedule=False,
                                           mpc_lambda=0.995, shut_down_system=False)
 
                 if go_to_normal_schedule:
@@ -305,7 +306,7 @@ class ZoneThread(threading.Thread):
                     normal_schedule_succeeded, action_data = normal_schedule.normal_schedule(debug=self.debug)
                     # Log this action.
                     if normal_schedule_succeeded:
-                        MPCLogger.mpc_log(building, zone, now_datetime, float(cfg["Interval_Length"]), is_mpc=False, is_schedule=True,
+                        MPCLogger.mpc_log(building, self.zone, utc_now, float(cfg["Interval_Length"]), is_mpc=False, is_schedule=True,
                                   expansion=2, shut_down_system=False)
 
                 # TODO if normal schedule fails then real problems
@@ -315,8 +316,9 @@ class ZoneThread(threading.Thread):
             print datetime.datetime.now()
             print("This process is for building %s" % cfg["Building"]) # TODO Rethink. now every thread will write this.
             # Wait for the next interval.
-            time.sleep(60. * float(cfg["Interval_Length"]) - (
-            (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
+            # time.sleep(60. * float(cfg["Interval_Length"]) - (
+            # (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
+            time.sleep(3)
 
             if actuate:
                 # end program if setpoints have been changed. (If not writing to tstat we don't want this)
@@ -373,7 +375,7 @@ if __name__ == '__main__':
             # print(filtered_zone_data.shape)
             if zone != "HVAC_Zone_Please_Delete_Me":
                 zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
-                                                        interval_length=15, thermal_precision=0.1)
+                                                        interval_length=15, thermal_precision=0.5)
     else:
         zone_thermal_models = {}
         for zone in tstats.keys():

@@ -54,7 +54,7 @@ def mpc_log(building, zone, current_time, interval, is_mpc, is_schedule, mpc_lam
     # TODO get interval in more than minutes maybe? Maybe timedelta object
     # TODO maybe more than interval? What if shortest path takes too long to run
     assert not (is_mpc and is_schedule)
-    assert not (mpc_lambda == -1 and expansion == -1)
+    assert not (mpc_lambda == -1 and expansion == -1) or shut_down_system
 
     path = SERVER_PATH + "/Buildings/" + building + "/" + "mpc_" + zone + ".log"
 
@@ -154,8 +154,8 @@ def mpc_log(building, zone, current_time, interval, is_mpc, is_schedule, mpc_lam
 
 
 if __name__ == "__main__":
-    BUILDING = "ciee"
-    ZONE = "HVAC_Zone_Eastzone"
+    BUILDING = "avenal-veterans-hall"
+    ZONE = "HVAC_Zone_AC-4"
 
     import time
 
