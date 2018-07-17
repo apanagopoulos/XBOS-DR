@@ -4,7 +4,7 @@ import pandas as pd
 import sys
 sys.path.append("..")
 import utils
-from ParentThermalModel import ParentThermalModel
+from DP.Server.MPC.ParentThermalModel import ParentThermalModel
 
 import yaml
 from scipy.optimize import curve_fit

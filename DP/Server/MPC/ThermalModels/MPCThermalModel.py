@@ -9,7 +9,7 @@ sys.path.append("./ThermalModels")
 sys.path.append("..")
 
 import utils
-from ThermalModel import ThermalModel
+from DP.Server.MPC.ThermalModels.ThermalModel import ThermalModel
 from AverageThermalModel import AverageThermalModel
 from ConstantThermalModel import ConstantThermalModel
 
@@ -304,7 +304,6 @@ if __name__ == "__main__":
     else:
         building, zone = "avenal-veterans-hall", "HVAC_Zone_AC-4"
 
-    from xbos import get_client
     data = utils.get_data(building, force_reload=False, evaluate_preprocess=False, days_back=150)
     zone_data = data[zone]
     zone_data = zone_data[zone_data['dt'] == 5]

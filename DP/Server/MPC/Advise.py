@@ -16,7 +16,7 @@ from Discomfort import Discomfort
 from EnergyConsumption import EnergyConsumption
 from Occupancy import Occupancy
 from Safety import Safety
-from ThermalModel import ThermalModel
+from DP.Server.MPC.ThermalModels.ThermalModel import ThermalModel
 
 
 class Node:
@@ -123,7 +123,6 @@ class EVA:
             for i in range(self.noZones):
                 # Note: we are assuming self.zones and self.temps are in right order.
                 new_temperature.append(self.th.predict(t_in=from_node.temps[i],
-                                                       zone=self.zones[i],
                                                        action=int(action[i]),
                                                        time=self.get_real_time(from_node.time).hour)[
                                            0])  # index because self.th.predict returns array.
@@ -264,6 +263,7 @@ if __name__ == '__main__':
 
     sys.path.insert(0, '..')
     sys.path.insert(0, '../../Utils')
+    sys.path.insert(0, './ThermalModels')
     import Debugger
     from DataManager import DataManager
 

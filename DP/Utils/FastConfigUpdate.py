@@ -100,7 +100,7 @@ for directory in all_dir[1]:
             config["Advise"]["Actuate_Start"] = "15:00"
             config["Advise"]["Actuate_End"] = "00:00"
         else:
-            config["Advise"]["Actuate_Start"] = "08:00"
+            config["Advise"]["Actuate_Start"] = "02:00"
             config["Advise"]["Actuate_End"] = "00:00"
         if building_config["Building"] == "jesse-turner-center" and "Basketball" not in config["Zone"]:
             config["Advise"]["Actuate"] = False

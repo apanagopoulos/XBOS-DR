@@ -2,7 +2,7 @@ Actuate_Lights: false
 Advise:
   Actuate: true
   Actuate_End: 00:00
-  Actuate_Start: 08:00
+  Actuate_Start: 02:00
   Baseline:
     0:
     - ['00:00', '13:00', None, None]

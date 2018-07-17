@@ -15,6 +15,7 @@ from ThermalDataManager import ThermalDataManager
 from NormalSchedule import NormalSchedule
 
 sys.path.insert(0, './MPC')
+sys.path.insert(0, './MPC/ThermalModels')
 from Advise import Advise
 from MPCThermalModel import MPCThermalModel
 # from AverageThermalModel import *
@@ -59,8 +60,7 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building)
         # need to set weather predictions for every loop and set current zone temperatures and fit the model given the new data (if possible).
         # NOTE: call setZoneTemperaturesAndFit before setWeahterPredictions
         # TODO Double Check if update to new thermal model was correct
-        thermal_model.set_temperatures_and_fit(zone_temperatures, interval=cfg["Interval_Length"],
-                                               now=now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])))
+        thermal_model.set_temperatures_and_fit(zone_temperatures, interval=cfg["Interval_Length"])
 
         # TODO Look at the weather_fetch function and make sure correct locks are implemented and we are getting the right data.
         weather = dataManager.weather_fetch()
@@ -186,7 +186,7 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building)
     # try to commit the changes to the thermostat, if it doesnt work 10 times in a row ignore and try again later
     for i in range(advise_cfg["Advise"]["Thermostat_Write_Tries"]):
         try:
-            tstat.write(p)
+            # tstat.write(p)
             thermal_model.set_last_action(
                 action)  # TODO Document that this needs to be set after we are sure that writing has succeeded.
             break
@@ -309,7 +309,7 @@ if __name__ == '__main__':
     with open(yaml_filename, 'r') as ymlfile:
         cfg = yaml.load(ymlfile)
 
-    if cfg["Server"]:
+    if cfg["Server"] and False:
         client = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
     else:
         client = get_client()
