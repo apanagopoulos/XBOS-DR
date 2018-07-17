@@ -15,7 +15,7 @@ print("Server path", SERVER_PATH)
 
 def read_line(line):
     """
-    lines have format ('%Y-%m-%d %H:%M:%S UTC';Message-Side Message) This should be a placeholder line. Except when
+    lines have format ('%Y-%m-%d %H:%M:%S UTC' , Message , Side Message) This should be a placeholder line. Except when
         # the last line is system off. main and side message, e.g If we have MPC we write MPC started-lambda=0.9
     :return main_msg, side_msg, msg_time
     """
