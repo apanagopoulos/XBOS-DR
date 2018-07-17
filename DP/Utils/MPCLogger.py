@@ -93,8 +93,8 @@ def mpc_log(building, zone, current_time, interval, is_mpc, is_schedule, mpc_lam
 
     # TODO why does more than an interval have to pass. EDIT: GOT rid of it
     # If the file is empty or the system had ended earlier but we are starting again.
-    if file_is_empty or (last_line_main_msg == "System off"):
-        messages_to_write.append(create_line(current_time, "System on"))
+    if file_is_empty or (last_line_main_msg == "System Off"):
+        messages_to_write.append(create_line(current_time, "System On"))
         # We want to make system on our last message
         last_line_main_msg, last_line_side_msg, last_line_time = read_line(messages_to_write[-1])
 
