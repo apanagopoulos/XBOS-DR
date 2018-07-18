@@ -316,9 +316,8 @@ class ZoneThread(threading.Thread):
             print datetime.datetime.now()
             print("This process is for building %s" % cfg["Building"]) # TODO Rethink. now every thread will write this.
             # Wait for the next interval.
-            # time.sleep(60. * float(cfg["Interval_Length"]) - (
-            # (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
-            time.sleep(3)
+            time.sleep(60. * float(cfg["Interval_Length"]) - (
+            (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
 
             if actuate:
                 # end program if setpoints have been changed. (If not writing to tstat we don't want this)
@@ -375,7 +374,7 @@ if __name__ == '__main__':
             # print(filtered_zone_data.shape)
             if zone != "HVAC_Zone_Please_Delete_Me":
                 zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
-                                                        interval_length=15, thermal_precision=0.5)
+                                                        interval_length=15, thermal_precision=0.05)
     else:
         zone_thermal_models = {}
         for zone in tstats.keys():

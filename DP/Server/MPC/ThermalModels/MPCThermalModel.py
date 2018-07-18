@@ -40,9 +40,11 @@ class MPCThermalModel:
         # the constants to use for the constant thermal model. It will add this constant to t_in to get t_next.
         # Making sure we are adding increments for thermal precision to make use of pruning in the DP graph.
         # TODO Get variable constants.
-        no_action_constant = utils.round_increment(0, precision=thermal_precision)
-        heating_constant = utils.round_increment(0.5, precision=thermal_precision)
-        cooling_constant = utils.round_increment(-0.5, precision=thermal_precision)
+        # Using thermal precision to predict if both average and thermal model provide
+        # inconsistent or non sensible data.
+        no_action_constant = 0
+        heating_constant = thermal_precision
+        cooling_constant = -thermal_precision
 
         # fit the thermal models
         self.thermal_model = self.thermal_model.fit(thermal_data, thermal_data["t_next"])
@@ -128,9 +130,9 @@ class MPCThermalModel:
         # # to make sure oldParams holds no more than 50 values for each zone
         # self._oldParams[zone] = self._oldParams[zone][-50:]
 
-    def _consistency_test(self, X, thermal_model):
+    def _prediction_test(self, X, thermal_model):
         """Takes the data X and for each datapoint runs the thermal model for each possible actions and 
-        sees if the prediction we would get is consistent. i.e. temperature change for heating is more than for 
+        sees if the prediction we would get is consistent and sensible. i.e. temperature change for heating is more than for 
         cooling etc. 
         Note, relies on having set self.is_two_stage to know if we are predicting two stage cooling data. """
 
@@ -148,6 +150,7 @@ class MPCThermalModel:
             that the max of cooling is smaller and the min of heating is larger. 
             :param row: pd.df keys which are the actions in all caps and "MAIN_ACTION" ,the action we actually 
                     want to find the consistency for.
+            :param is_two_stage: bool wether we are using predictions for a two stage building.
             :return bool. Whether the given data is consistent."""
             main_action = row["MAIN_ACTION"]
 
@@ -169,6 +172,33 @@ class MPCThermalModel:
 
             return False
 
+        def sensibility_check(X, is_two_stage, sensibility_measure=20):
+            """Checks if the predictions are within sensibility_measure degrees of tin. It wouldn't make sense to predict 
+            more. This will be done for all possible action predictions. If any one is not sensible, we will disregard 
+            the whole prediction set. 
+            ALSO, check if Nan values
+            :param X: pd.df keys which are the actions in all caps and "MAIN_ACTION" ,the action we actually 
+                    want to find the consistency for.
+            :param is_two_stage: bool wether we are using predictions for a two stage building.
+            :param sensibility_measure: (Float) degrees within the prediction may lie. 
+                            e.g. t_in-sensibility_measure < prediction < t_in+sensibility_measure
+            :return np.array booleans"""
+            differences = []
+            differences.append(np.abs(X["NO_ACTION"] - X["T_IN"]))
+            differences.append(np.abs(X["HEATING_ACTION"] - X["T_IN"]))
+            differences.append(np.abs(X["COOLING_ACTION"] - X["T_IN"]))
+            if is_two_stage:
+                differences.append(np.abs(X["TWO_STAGE_HEATING_ACTION"] - X["T_IN"]))
+                differences.append(np.abs(X["TWO_STAGE_COOLING_ACTION"] - X["T_IN"]))
+
+            # check if every difference is in sensible band and not nan. We can check if the prediction is nan
+            # by checking if the difference is nan, because np.nan + x = np.nan
+            sensibility_filter_array = [(diff < sensibility_measure) & (diff != np.nan) for diff in differences]
+            # putting all filters together by taking the and of all of them.
+            sensibility_filter_check = reduce(lambda x, y: x & y, sensibility_filter_array)
+            return sensibility_filter_check.values
+
+
         no_action_predictions = predict_action(X, utils.NO_ACTION, thermal_model)
         heating_action_predictions = predict_action(X, utils.HEATING_ACTION, thermal_model)
         cooling_action_predictions = predict_action(X, utils.COOLING_ACTION, thermal_model)
@@ -179,7 +209,7 @@ class MPCThermalModel:
             two_stage_cooling_predictions = None
             two_stage_heating_predictions = None
 
-        predictions_action = pd.DataFrame({"NO_ACTION": no_action_predictions,
+        predictions_action = pd.DataFrame({"T_IN": X["t_in"], "NO_ACTION": no_action_predictions,
                                            "HEATING_ACTION": heating_action_predictions,
                                            "COOLING_ACTION": cooling_action_predictions,
                                            "TWO_STAGE_HEATING_ACTION": two_stage_heating_predictions,
@@ -187,23 +217,9 @@ class MPCThermalModel:
                                            "MAIN_ACTION": X["action"]})
 
         consistent_filter = predictions_action.apply(lambda row: consistency_check(row, self.is_two_stage), axis=1)
+        sensibility_filter = sensibility_check(predictions_action, self.is_two_stage, sensibility_measure=20)
 
-        return consistent_filter.values
-
-    def _sensibility_test(self, X, thermal_model, sensibility_measure=20):
-        """Checks if the predictions are within sensibility_measure degrees of tin. It wouldn't make sense to predict 
-        more.
-        ALSO, check if Nan values
-        :param X: preprocessed data as given by ThermalDataManager
-        :param thermal_model: a child class of ParentThermalModel
-        :param sensibility_measure: (Float) degrees within the prediction may lie. 
-                        e.g. t_in-sensibility_measure < prediction < t_in+sensibility_measure
-        :return np.array booleans"""
-        predictions = thermal_model.predict(X)
-        diff = np.abs(predictions - X['t_in'])
-        # check if in sensible band and not nan
-        sensibility_filter = (diff < sensibility_measure) & (predictions != np.nan)
-        return sensibility_filter.values
+        return consistent_filter.values & sensibility_filter
 
     # TODO right now only one datapoint is being predicted. Extend to more. Consistecy check works for arbitrary data.
     def predict(self, t_in, action, time=None, outside_temperature=None, interval=None, debug=False):
@@ -233,9 +249,7 @@ class MPCThermalModel:
         thermal_model_predictions = self.thermal_model.predict(X)
 
         # makes sure that the predictions that we make are consistent.
-        thermal_model_consistency_filter = self._consistency_test(X, self.thermal_model)
-        thermal_model_sensibility_filter = self._sensibility_test(X, self.thermal_model)
-        thermal_model_filter = thermal_model_consistency_filter & thermal_model_sensibility_filter
+        thermal_model_filter = self._prediction_test(X, self.thermal_model)
 
         # identify all the elements that are predicted by thermal_model
         model_types = np.array(thermal_model_filter.shape, dtype=object)
@@ -245,10 +259,8 @@ class MPCThermalModel:
         if not all(thermal_model_filter):
             thermal_model_inconsistent_data = X[thermal_model_filter == 0]
             average_thermal_model_predictions = self.average_thermal_model.predict(thermal_model_inconsistent_data)
-            average_thermal_model_consistency_filter = self._consistency_test(thermal_model_inconsistent_data,
-                                                                                    self.average_thermal_model)
-            average_thermal_model_sensibility_filter = self._sensibility_test(X, self.average_thermal_model)
-            average_thermal_model_filter = average_thermal_model_consistency_filter & average_thermal_model_sensibility_filter
+            average_thermal_model_filter = self._prediction_test(thermal_model_inconsistent_data,
+                                                                 self.average_thermal_model)
 
             # identify all the elements that are predicted by average thermal_model
             average_model_types = np.array(average_thermal_model_filter.shape, dtype=object)
@@ -260,11 +272,8 @@ class MPCThermalModel:
                     average_thermal_model_filter == 0]
                 constant_thermal_model_predictions = self.constant_thermal_model.predict(
                     average_model_inconsistent_data)
-                constant_thermal_model_consistency_filter = self._consistency_test(
+                constant_thermal_model_filter = self._prediction_test(
                     average_model_inconsistent_data, self.constant_thermal_model)
-                constant_thermal_model_sensibility_filter = self._sensibility_test(X, self.constant_thermal_model)
-                constant_thermal_model_filter = constant_thermal_model_consistency_filter & \
-                                                constant_thermal_model_sensibility_filter
 
                 # Sanity check that the constant model gives sensible and consistent data.
                 assert all(constant_thermal_model_filter)
@@ -330,7 +339,6 @@ if __name__ == "__main__":
     zone_data = data[zone]
     zone_data = zone_data[zone_data['dt'] == 5]
 
-
     # get zone temperatures
     zone_temps = {}
     for zone_key in data.keys():
@@ -338,13 +346,12 @@ if __name__ == "__main__":
 
     print(zone_data.index)
 
-
     mpc_thermal_model = MPCThermalModel(zone, zone_data, 5, is_two_stage=False)
 
     mpc_thermal_model.set_temperatures_and_fit(zone_temps, 0)
     # print(zone_data[0 == mpc_thermal_model._consistency_test(zone_data, mpc_thermal_model.thermal_model)].values[0])
     # print(mpc_thermal_model.thermal_model._params)
     # print(mpc_thermal_model.predict(zone_data))
-    prediction = mpc_thermal_model.predict(70, 1, outside_temperature=72, debug=True)
-
-    print(prediction)
+    print(mpc_thermal_model.predict(70, 1, outside_temperature=72, debug=True))
+    print(mpc_thermal_model.predict(70, 0, outside_temperature=72, debug=True))
+    print(mpc_thermal_model.predict(70, 2, outside_temperature=72, debug=True))

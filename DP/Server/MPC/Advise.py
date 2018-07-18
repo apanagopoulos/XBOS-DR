@@ -24,25 +24,20 @@ class Node:
     # this is a Node of the graph for the shortest path
     """
 
-    def __init__(self, temps, time, model_type=None):
+    def __init__(self, temps, time):
         self.temps = temps
         self.time = time
-        # if we choose to debug in advise
-        self.model_type = model_type
 
     def __hash__(self):
         return hash((' '.join(str(e) for e in self.temps), self.time))
 
     def __eq__(self, other):
-        # TODO should we make two nodes equal if not predictd by same model? Yes, so we can make use of DP. Still, ask thanos.
+        # TODO should we make two nodes equal if not predictd by same model? Yes, so we can make use of DP. Still, ask thanos. ADD TO EDGES.
         return isinstance(other, self.__class__) \
                and self.temps == other.temps \
                and self.time == other.time
 
     def __repr__(self):
-        # if self.model_type is not None:
-        #     return "{0}-{1}-{2}".format(self.time, self.temps, self.model_type)
-        # else:
         return "{0}-{1}".format(self.time, self.temps)
 
 
@@ -148,17 +143,10 @@ class EVA:
                 consumption.append(self.energy.calc_cost(action[i], from_node.time / self.interval))
 
             # create the node that describes the predicted data
-            if self.debug:
-                new_node = Node(
-                    temps=new_temperature,
-                    time=from_node.time + self.interval,
-                    model_type=model_type
-                )
-            else:
-                new_node = Node(
-                    temps=new_temperature,
-                    time=from_node.time + self.interval
-                )
+            new_node = Node(
+                temps=new_temperature,
+                time=from_node.time + self.interval
+            )
 
             if self.safety.safety_check(new_temperature, new_node.time / self.interval) and len(action_set) > 1:
                 continue
@@ -184,7 +172,7 @@ class EVA:
             this_path_cost = self.g.node[new_node]['usage_cost'] + interval_overall_cost
 
             # add the edge connecting this state to the previous
-            self.g.add_edge(from_node, new_node, action=action)
+            self.g.add_edge(from_node, new_node, action=action, model_type=model_type)
 
             # choose the shortest path
             if this_path_cost <= self.g.node[from_node]['usage_cost']:
@@ -239,10 +227,9 @@ class Advise:
                                    heat=heating_cons, cool=cooling_cons)
 
         Zones_Starting_Temps = zone_temperature
-        if debug:
-            self.root = Node(temps=Zones_Starting_Temps, time=0, model_type=["Initial Temperature"])
-        else:
-            self.root = Node(temps=Zones_Starting_Temps, time=0)
+
+        # initialize root
+        self.root = Node(temps=Zones_Starting_Temps, time=0)
 
         temp_l = dr_lamda if dr else lamda
 
@@ -329,7 +316,7 @@ if __name__ == '__main__':
     # TODO INTERVAL SHOULD NOT BE IN config_file.yml, THERE SHOULD BE A DIFFERENT INTERVAL FOR EACH ZONE
     # TODO, NOTE, We are training on the whole building.
     zone_thermal_models = {thermal_zone: MPCThermalModel(zone, zone_data[zone_data['dt'] == 5], interval_length=cfg["Interval_Length"],
-                                                 thermal_precision=cfg["Thermal_Precision"])
+                                                 thermal_precision=0.05)
                            for thermal_zone, zone_data in all_data.items()}
     print("Trained Thermal Model")
     # --------------------------------------
@@ -341,7 +328,7 @@ if __name__ == '__main__':
     prices = dataManager.prices()
     building_setpoints = dataManager.building_setpoints()
 
-    temperature = 67.8
+    temperature = 65
     DR = False
 
     # set outside temperatures and zone temperatures for each zone.
@@ -367,12 +354,14 @@ if __name__ == '__main__':
                  advise_cfg["Advise"]["Occupancy_Obs_Len_Addition"],
                  building_setpoints,
                  advise_cfg["Advise"]["Occupancy_Sensors"],
-                 safety_constraints)
+                 safety_constraints,
+                 debug=True)
 
     adv_start = time.time()
     adv.advise()
     adv_end = time.time()
-    print([n.model_type[0] for n in adv.path])
+    path_length = len(adv.path)
+    print([adv.advise_unit.g[adv.path[i]][adv.path[i + 1]]['model_type'] for i in range(path_length - 1)])
     Debugger.debug_print(now, building, zone, adv, safety_constraints, prices, building_setpoints, adv_end - adv_start, file=False)
-    # adv.g_plot(ZONE)
+    adv.g_plot(zone)
 
