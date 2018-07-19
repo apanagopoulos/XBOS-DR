@@ -1,4 +1,4 @@
-import sys, glob, os, pickle, pytz, datetime
+import sys, glob, yaml, os, pickle, pytz, datetime
 import numpy as np
 from datetime import timedelta
 import pandas as pd
@@ -149,7 +149,7 @@ class Thermal:
 			hour = parser.parse(data["startTime"]).hour
 			weather_predictions[j][hour] = int(data["temperature"])
 
-			if i>0 and i%23==0:
+			if i>0 and i%24==0:
 				j += 1
 			if j > 3:
 				break
@@ -324,7 +324,11 @@ class Simulation:
 			#this handles the weather on the thermal model
 			if now_time.hour != current_hour:
 				if (now_time - self.now).days > self.t_models.current_day:
+					print "GOT IN HERE"
+					print (now_time - self.now).days
+					print self.t_models.current_day
 					self.t_models.current_day = (now_time - self.now).days
+
 				self.t_models.update_weather(current_hour)
 				current_hour = now_time.hour
 
@@ -407,10 +411,12 @@ class Simulation:
 		print next_temp
 		print "Simulation is finished"
 		for zone in self.zones:
+			print zone
 			print "Total cost: " + str(np.sum(total_cost[zone]))
 			print "Total disc: " + str(np.sum(total_disc[zone]))
 			print "Actions where: "
 			print total_action[zone]
+			print "Occupancy was: " + str(total_occupancy[zone])
 
 		#save the simulation output with pickle in "outfile_buildingName.dict" format
 		return_dict = {}
@@ -533,5 +539,5 @@ if __name__ == '__main__':
 	#cfg is the building cfg
 	#plot friendly output, if true, saves all the needed output in a per minute fashion
 	#if false it saves in a per interval fashion
-	sim = Simulation("avenal-veterans-hall", hours=1, cfg=None, plot_friendly_output=False)
+	sim = Simulation("ciee", hours=25, cfg=None, plot_friendly_output=False)
 	sim.run()
