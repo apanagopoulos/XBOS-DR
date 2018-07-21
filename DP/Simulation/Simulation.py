@@ -167,10 +167,6 @@ class Occupancy:
 		self.zones = zones #list of zone names
 		self.advise_cfgs = advise_cfgs #zone configs
 		self.now = now #starting time
-		self.occ_array = self.preprocess_occ()
-
-	# fetches historical data if sensors exists, creates occupancy array for the next hours if it doesnt
-	def preprocess_occ(self):
 
 		occ_flag = False
 		for zone in self.zones:
@@ -185,61 +181,66 @@ class Occupancy:
 						  ?zone rdf:type brick:HVAC_Zone};""" % self.cfg["Building"]
 			# get all the occupancy sensors uuids
 			results = self.hc.do_query(occ_query)  # run the query
-			uuids = [[x['?zone'], x['?uuid']] for x in results['Rows']]  # unpack
-			c = mdal.MDALClient("xbos/mdal", client=self.c)
-		zone_occupancies = {}
+			self.uuids = [[x['?zone'], x['?uuid']] for x in results['Rows']]  # unpack
+			self.mc = mdal.MDALClient("xbos/mdal", client=self.c)
 
+		self.occ_array = {}
 		for zone in self.zones:
-
-			if self.advise_cfgs[zone]["Advise"]["Occupancy_Sensors"]:
-
-				# only choose the sensors for the zone specified in cfg
-				query_list = []
-				for i in uuids:
-					if i[0] == zone:
-						query_list.append(i[1])
-
-				# get the sensor data
-
-				dfs = c.do_query({'Composition': query_list,
-								  'Selectors': [mdal.MAX] * len(query_list),
-								  'Time': {'T0': (self.now - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-										   'T1': self.now.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-										   'WindowSize': str(self.cfg["Interval_Length"]) + 'min',
-										   'Aligned': True}})
-
-				dfs = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
-
-				df = dfs[[query_list[0]]]
-				df.columns.values[0] = 'occ'
-				df.is_copy = False
-				df.columns = ['occ']
-				# perform OR on the data, if one sensor is activated, the whole zone is considered occupied
-				for i in range(1, len(query_list)):
-					df.loc[:, 'occ'] += dfs[query_list[i]]
-				df.loc[:, 'occ'] = 1 * (df['occ'] > 0)
-
-				zone_occupancies[zone] = df.tz_localize(None)
+			if self.advise_cfgs[zone]["Advise"]["Occupancy_Sensors"] == True:
+				self.occ_array[zone] = self.preprocess_occ_sensors(zone)
 			else:
-				occupancy_array = self.advise_cfgs[zone]["Advise"]["Occupancy"]
+				self.occ_array[zone] = self.preprocess_occ_non_sensors(zone)
 
-				now_time = self.now.astimezone(tz=pytz.timezone(self.cfg["Pytz_Timezone"]))
-				occupancy = []
+	# fetches historical data if sensors exists
+	def preprocess_occ_sensors(self, zone):
 
-				while now_time <= self.now + timedelta(hours=self.advise_cfgs[zone]["Advise"]["MPCPredictiveHorizon"]):
-					i = now_time.weekday()
+		# only choose the sensors for the zone specified in cfg
+		query_list = []
+		for i in self.uuids:
+			if i[0] == zone:
+				query_list.append(i[1])
 
-					for j in occupancy_array[i]:
-						if in_between(now_time.time(), datetime.time(int(j[0].split(":")[0]), int(j[0].split(":")[1])),
-									  datetime.time(int(j[1].split(":")[0]), int(j[1].split(":")[1]))):
-							occupancy.append(j[2])
-							break
+		# get the sensor data
 
-					now_time += timedelta(minutes=self.cfg["Interval_Length"])
+		dfs = self.mc.do_query({'Composition': query_list,
+						  'Selectors': [mdal.MAX] * len(query_list),
+						  'Time': {'T0': (self.now - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+								   'T1': self.now.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+								   'WindowSize': str(self.cfg["Interval_Length"]) + 'min',
+								   'Aligned': True}})
 
-					zone_occupancies[zone] = occupancy
+		dfs = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
 
-		return zone_occupancies
+		df = dfs[[query_list[0]]]
+		df.columns.values[0] = 'occ'
+		df.is_copy = False
+		df.columns = ['occ']
+		# perform OR on the data, if one sensor is activated, the whole zone is considered occupied
+		for i in range(1, len(query_list)):
+			df.loc[:, 'occ'] += dfs[query_list[i]]
+		df.loc[:, 'occ'] = 1 * (df['occ'] > 0)
+
+		return df.tz_localize(None)
+
+	def preprocess_occ_non_sensors(self, zone):
+
+		occupancy_array = self.advise_cfgs[zone]["Advise"]["Occupancy"]
+
+		now_time = self.now.astimezone(tz=pytz.timezone(self.cfg["Pytz_Timezone"]))
+		occupancy = []
+
+		while now_time <= self.now + timedelta(hours=self.advise_cfgs[zone]["Advise"]["MPCPredictiveHorizon"]):
+			i = now_time.weekday()
+
+			for j in occupancy_array[i]:
+				if in_between(now_time.time(), datetime.time(int(j[0].split(":")[0]), int(j[0].split(":")[1])),
+							  datetime.time(int(j[1].split(":")[0]), int(j[1].split(":")[1]))):
+					occupancy.append(j[2])
+					break
+
+			now_time += timedelta(minutes=self.cfg["Interval_Length"])
+
+		return occupancy
 
 	#updates the historical data if sensors exist, creates the new occupancy array if it doesnt
 	def update_occ_array(self, new_occs):
@@ -251,7 +252,7 @@ class Occupancy:
 																 + timedelta(minutes=int(self.cfg["Interval_Length"])),
 														 columns=['occ'])).iloc[1:]
 			else:
-				self.occ_array[zone] = self.preprocess_occ()[zone]
+				self.occ_array[zone] = self.preprocess_occ_non_sensors(zone)
 
 #this is the simulaton class
 class Simulation:
@@ -539,5 +540,5 @@ if __name__ == '__main__':
 	#cfg is the building cfg
 	#plot friendly output, if true, saves all the needed output in a per minute fashion
 	#if false it saves in a per interval fashion
-	sim = Simulation("ciee", hours=25, cfg=None, plot_friendly_output=False)
+	sim = Simulation("ciee", hours=4, cfg=None, plot_friendly_output=False)
 	sim.run()
