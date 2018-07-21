@@ -79,6 +79,7 @@ class Thermal:
         for zone, zone_thermal_data in thermal_data.items()}
         """
 
+        #TODO MAKE IT SO THAT IN OLDER DAYS WE ARE USING THE "OUTSIDE" STREAM DATA INSTEAD OF THE WEATHER PREDICTIONS.
         self.weather_predictions = self.weather_fetch() #weather predictons for the next 4 days
         self.weather = self.weather_predictions[self.current_day] #weather predictions for the next 24 hours
         for i in self.zones:
@@ -157,6 +158,8 @@ class Thermal:
 
 # this is the occupancy handling class
 #TODO OCCUPANCY CLASS NEEDS REVAMP AND A LOT OF CHANGES
+#TODO SHOULD UPDATE FOR ZONES WITH SENSORS ALLWAYS UPDATE THE OCCUPANCY PREDICTION MODEL? (MAYBE PRECALCULATE THAT)
+#TODO MAKE THE UPDATE FOR ZONES WITH SENSORS BEHAVIOR LIKE A PREVIOUS SIMILAR WEEKDAY, AND NOT GET UPDATED ON THE FLY ACCORDING TO PREDICTIONS
 class Occupancy:
 
     def __init__(self, client, hod_client, cfg, advise_cfgs, zones, now):
