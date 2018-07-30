@@ -1,14 +1,29 @@
-Pytz_Timezone: "America/Los_Angeles"
-Building : local-butcher-shop
-Coordinates: "37.8780587,-122.2715741"
-Pricing: 
- Energy_Rates: "TOU-Summer" # options are "NON-TOU-Summer", "NON-TOU-Winter", "TOU-Summer", "TOU-Winter"
- Holiday: FALSE
- DR: FALSE
- DR_Start: "14:00"
- DR_Finish: "18:00"
- DR_Price: 1.35178
- NON-TOU-Summer: [[["00:00", "00:00", 0.2473]], [["00:00", "00:00", 0.2473]]] ## No NON-TOU Pricing
- NON-TOU-Winter: [[["00:00", "00:00", 0.1927]], [["00:00", "00:00", 0.1927]]]  ## No NON-TOU Pricing
- TOU-Summer: [[["00:00", "08:30", 0.08445],["08:30", "12:00", 0.11127],["12:00", "18:00", 0.15178],["18:00", "21:30", 0.11127],["21:30", "00:00", 0.08445]], [["00:00","00:00", 0.08445]]]
- TOU-Winter: [[["00:00", "08:30", 0.09111],["08:30", "21:30", 0.10573],["21:30", "00:00", 0.09111]], [["00:00","00:00", 0.09111]]]
+Building: local-butcher-shop
+Coordinates: 37.8780587,-122.2715741
+Pricing:
+  DR: false
+  DR_Finish: '18:00'
+  DR_Price: 1.35178
+  DR_Start: '14:00'
+  Energy_Rates: TOU-Summer
+  Holiday: false
+  NON-TOU-Summer:
+  - - ['00:00', '00:00', 0.2473]
+  - - ['00:00', '00:00', 0.2473]
+  NON-TOU-Winter:
+  - - ['00:00', '00:00', 0.1927]
+  - - ['00:00', '00:00', 0.1927]
+  TOU-Summer:
+  - - ['00:00', '08:30', 0.08445]
+    - ['08:30', '12:00', 0.11127]
+    - ['12:00', '18:00', 0.15178]
+    - ['18:00', '21:30', 0.11127]
+    - ['21:30', '00:00', 0.08445]
+  - - ['00:00', '00:00', 0.08445]
+  TOU-Winter:
+  - - ['00:00', '08:30', 0.09111]
+    - ['08:30', '21:30', 0.10573]
+    - ['21:30', '00:00', 0.09111]
+  - - ['00:00', '00:00', 0.09111]
+Pytz_Timezone: America/Los_Angeles
+Server: true

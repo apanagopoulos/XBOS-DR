@@ -87,6 +87,9 @@ class LinearZones:
             for zone in range(self.num_zones)])
         '''
 
+        # TODO Because cooling_power need not equal heating_power, just adjust 1 to 0.8 if heating power is
+        # 0.8 of cooling_power.
+
         # This will be the eventual action to be taken.
         # We constraint -1 <= self.action <= 1 and self.action is continuous.
         # Where negative implies that we use that percentage of max_power_cooling and positive
@@ -149,6 +152,7 @@ class LinearZones:
 
         self.model.setObjective(obj, GRB.MAXIMIZE)
 
+    # TODO Change because we have comfortband.
     def set_discomfort(self):
         """Set the constraints for the discomfort. We are setting the total discomfort of a zone from now till the
         end of the time horizon, since the objective in the paper has a double sum which can be interchanged."""

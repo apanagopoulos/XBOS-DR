@@ -29,31 +29,34 @@ for directory in all_dir[1]:
     # building_config["Pricing"]["DR_Start"] = "14:00"
     # building_config["Pricing"]["DR_Finish"] = "18:00"
 
+    # building_config["Server"] = True
+    # if "Agent_IP" not in building_config:
+    #     building_config["Agent_IP"] = "172.17.0.1:28589"
+    #
+    # if "Entity_File" not in building_config:
+    #     building_config["Entity_File"] = "./thanos.ent"
+    #
+    #
+    # if "Interval_Length" not in building_config:
+    #     building_config["Interval_Length"] = 15
+    # if "Max_Actions" not in building_config:
+    #     building_config["Max_Actions"] = 400
+    #
+    # building_config["Pricing"]["DR_Start"] = "14:00"
+    # building_config["Pricing"]["DR_Finish"] = "18:00"
+    #
+    # building_config["Pricing"].pop("DR Start", None)
+    # building_config["Pricing"].pop("DR Finish", None)
+    # building_config["Pricing"].pop("DR-Start", None)
+    # building_config["Pricing"].pop("DR_End", None)
+    #
+    #
+    #
+    #
+    # building_config["Pricing"]["DR"] = True
+
+
     building_config["Server"] = True
-    if "Agent_IP" not in building_config:
-        building_config["Agent_IP"] = "172.17.0.1:28589"
-
-    if "Entity_File" not in building_config:
-        building_config["Entity_File"] = "./thanos.ent"
-
-
-    if "Interval_Length" not in building_config:
-        building_config["Interval_Length"] = 15
-    if "Max_Actions" not in building_config:
-        building_config["Max_Actions"] = 400
-
-    building_config["Pricing"]["DR_Start"] = "14:00"
-    building_config["Pricing"]["DR_Finish"] = "18:00"
-
-    building_config["Pricing"].pop("DR Start", None)
-    building_config["Pricing"].pop("DR Finish", None)
-    building_config["Pricing"].pop("DR-Start", None)
-    building_config["Pricing"].pop("DR_End", None)
-
-
-
-
-    building_config["Pricing"]["DR"] = True
 
     # write to config
     with open(building_config_name, 'wb') as f:
@@ -85,38 +88,38 @@ for directory in all_dir[1]:
         # else:
         #     config["Advise"]["MPC"] = True
         #     print("%s zone will run MPC." % f)
-        config["Advise"]["Baseline_Dr_Extend_Percent"] = 4
-        config["Advise"]["General_Lambda"] = 0.995
-        config["Advise"]["DR_Lambda"] = 0.995
-        config["Advise"].pop("Lambda", None)
-
-        config.pop("General_Lambda", None)
-        config.pop("DR_Lambda", None)
-
-        config["Actuate_Lights"] = False
-
-        config["Advise"]["Actuate"] = True
-        if building_config["Building"] in ["avenal-recreation-center"]:
-            config["Advise"]["Actuate_Start"] = "15:00"
-            config["Advise"]["Actuate_End"] = "00:00"
-        else:
-            config["Advise"]["Actuate_Start"] = "02:00"
-            config["Advise"]["Actuate_End"] = "00:00"
-        if building_config["Building"] == "jesse-turner-center" and "Basketball" not in config["Zone"]:
-            config["Advise"]["Actuate"] = False
-
-        if "Occupancy Probability" in config["Advise"]:
-            occ = config["Advise"]["Occupancy Probability"]
-            config["Advise"]["Occupancy"] = occ
-            config["Advise"].pop("Occupancy Probability", None)
-
-        if "Stage_2_Cooling" in config["Advise"]:
-            if config["Advise"]["Stage_2_Cooling"] or building_config["Building"] == "south-berkeley-senior-center":
-                config["Advise"]["MPC"] = False
-            else:
-                config["Advise"]["MPC"] = True
-
-        config["Advise"]["Thermostat_Write_Tries"] = 10
+        # config["Advise"]["Baseline_Dr_Extend_Percent"] = 4
+        # config["Advise"]["General_Lambda"] = 0.995
+        # config["Advise"]["DR_Lambda"] = 0.995
+        # config["Advise"].pop("Lambda", None)
+        #
+        # config.pop("General_Lambda", None)
+        # config.pop("DR_Lambda", None)
+        #
+        # config["Actuate_Lights"] = False
+        #
+        # config["Advise"]["Actuate"] = True
+        # if building_config["Building"] in ["avenal-recreation-center"]:
+        #     config["Advise"]["Actuate_Start"] = "15:00"
+        #     config["Advise"]["Actuate_End"] = "00:00"
+        # else:
+        #     config["Advise"]["Actuate_Start"] = "02:00"
+        #     config["Advise"]["Actuate_End"] = "00:00"
+        # if building_config["Building"] == "jesse-turner-center" and "Basketball" not in config["Zone"]:
+        #     config["Advise"]["Actuate"] = False
+        #
+        # if "Occupancy Probability" in config["Advise"]:
+        #     occ = config["Advise"]["Occupancy Probability"]
+        #     config["Advise"]["Occupancy"] = occ
+        #     config["Advise"].pop("Occupancy Probability", None)
+        #
+        # if "Stage_2_Cooling" in config["Advise"]:
+        #     if config["Advise"]["Stage_2_Cooling"] or building_config["Building"] == "south-berkeley-senior-center":
+        #         config["Advise"]["MPC"] = False
+        #     else:
+        #         config["Advise"]["MPC"] = True
+        #
+        # config["Advise"]["Thermostat_Write_Tries"] = 10
 
 
         # ==============================
