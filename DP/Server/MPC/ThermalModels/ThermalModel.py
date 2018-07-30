@@ -1,15 +1,13 @@
+import sys
+
 import numpy as np
 import pandas as pd
 
-import sys
 sys.path.append("..")
 import utils
-from DP.Server.MPC.ParentThermalModel import ParentThermalModel
+from ParentThermalModel import ParentThermalModel
 
-import yaml
 from scipy.optimize import curve_fit
-
-import matplotlib.pyplot as plt
 
 
 # following model also works as a sklearn model.
@@ -153,7 +151,6 @@ class ThermalModel(ParentThermalModel):
 
 if __name__ == '__main__':
     print("Thermal Model")
-    import pickle
     import sys
 
 

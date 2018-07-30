@@ -172,7 +172,10 @@ class EVA:
             this_path_cost = self.g.node[new_node]['usage_cost'] + interval_overall_cost
 
             # add the edge connecting this state to the previous
-            self.g.add_edge(from_node, new_node, action=action, model_type=model_type)
+            if self.debug:
+                self.g.add_edge(from_node, new_node, action=action, model_type=model_type)
+            else:
+                self.g.add_edge(from_node, new_node, action=action)
 
             # choose the shortest path
             if this_path_cost <= self.g.node[from_node]['usage_cost']:

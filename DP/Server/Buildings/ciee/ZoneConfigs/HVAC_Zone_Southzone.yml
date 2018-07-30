@@ -63,7 +63,7 @@ Advise:
   Hysterisis: 1.0
   Interval_Length: 15
   MPC: true
-  MPCPredictiveHorizon: 4
+  MPCPredictiveHorizon: 1
   Max_Actions: 400
   Minimum_Comfortband_Height: 4.0
   Occupancy:

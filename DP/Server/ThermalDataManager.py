@@ -69,14 +69,19 @@ class ThermalDataManager:
 
         return final_outside_data
 
-    def _get_outside_data(self, start=None, end=None):
+    def _get_outside_data(self, start=None, end=None, inclusive=False):
         # TODO update docstring
         """Get outside temperature for thermal model.
         :param start: (datetime) time to start. in UTC time.
         :param end: (datetime) time to end. in UTC time.
+        :param inclusive: (bool) whether the end time should be inclusive. 
+                        which means that we get the time for the end, plus 15 min.
         :return ({uuid: (pd.df) (col: "t_out) outside_data})  outside temperature has freq of 15 min and
         pd.df columns["tin", "action"] has freq of self.window_size. """
 
+        # add an interval, to make the end inclusive, which means that we get the time for the end, plus 15 min.
+        if inclusive:
+            end += datetime.timedelta(minutes=15)
 
         outside_temperature_query = """SELECT ?weather_station ?uuid FROM %s WHERE {
                                     ?weather_station rdf:type brick:Weather_Temperature_Sensor.
@@ -404,7 +409,12 @@ if __name__ == '__main__':
     dataManager = ThermalDataManager(cfg, c)
 
 
-    o = dataManager._get_inside_data(now-datetime.timedelta(days=10), now)
+    o = dataManager._get_outside_data(now-datetime.timedelta(days=10), now)
+    o = dataManager._preprocess_outside_data(o.values())
+
+    grouper = o.groupby([pd.Grouper(freq='1H')])
+    print(grouper['t_out'].mean())
+
     # zo = o.values()[0]
     # print zo.iloc[zo.shape[0]/2 - 5:]
     # print(o)

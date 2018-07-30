@@ -62,74 +62,76 @@ class DataManager:
         self.horizon = advise_cfg["Advise"]["MPCPredictiveHorizon"]
         self.c = client
 
-    def preprocess_occ(self):
+    # TODO NEED TO BE REPLACED by better occupancy data methods.
+    def preprocess_occ_mdal(self):
         """
         Returns the required dataframe for the occupancy predictions
         -------
         Pandas DataFrame
         """
 
-        if self.advise_cfg["Advise"]["Occupancy_Sensors"]:
-            hod = HodClient("xbos/hod",
-                            self.c)  # TODO MAKE THIS WORK WITH FROM AND xbos/hod, FOR SOME REASON IT DOES NOT
+        hod = HodClient("xbos/hod",
+                        self.c)  # TODO MAKE THIS WORK WITH FROM AND xbos/hod, FOR SOME REASON IT DOES NOT
 
-            occ_query = """SELECT ?sensor ?uuid ?zone FROM %s WHERE {
+        occ_query = """SELECT ?sensor ?uuid ?zone FROM %s WHERE {
 
-						  ?sensor rdf:type brick:Occupancy_Sensor .
-						  ?sensor bf:isPointOf/bf:isPartOf ?zone .
-						  ?sensor bf:uuid ?uuid .
-						  ?zone rdf:type brick:HVAC_Zone
-						};
-						""" % self.controller_cfg["Building"]  # get all the occupancy sensors uuids
+                      ?sensor rdf:type brick:Occupancy_Sensor .
+                      ?sensor bf:isPointOf/bf:isPartOf ?zone .
+                      ?sensor bf:uuid ?uuid .
+                      ?zone rdf:type brick:HVAC_Zone
+                    };
+                    """ % self.controller_cfg["Building"]  # get all the occupancy sensors uuids
 
-            results = hod.do_query(occ_query)  # run the query
-            uuids = [[x['?zone'], x['?uuid']] for x in results['Rows']]  # unpack
+        results = hod.do_query(occ_query)  # run the query
+        uuids = [[x['?zone'], x['?uuid']] for x in results['Rows']]  # unpack
 
-            # only choose the sensors for the zone specified in cfg
-            query_list = []
-            for i in uuids:
-                if i[0] == self.zone:
-                    query_list.append(i[1])
+        # only choose the sensors for the zone specified in cfg
+        query_list = []
+        for i in uuids:
+            if i[0] == self.zone:
+                query_list.append(i[1])
 
-            # get the sensor data
-            c = mdal.MDALClient("xbos/mdal", client=self.c)
-            dfs = c.do_query({'Composition': query_list,
-                              'Selectors': [mdal.MAX] * len(query_list),
-                              'Time': {'T0': (self.now - timedelta(days=25)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                       'T1': self.now.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                       'WindowSize': str(self.interval) + 'min',
-                                       'Aligned': True}})
+        # get the sensor data
+        c = mdal.MDALClient("xbos/mdal", client=self.c)
+        dfs = c.do_query({'Composition': query_list,
+                          'Selectors': [mdal.MAX] * len(query_list),
+                          'Time': {'T0': (self.now - timedelta(days=25)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                   'T1': self.now.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                                   'WindowSize': str(self.interval) + 'min',
+                                   'Aligned': True}})
 
-            dfs = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
+        dfs = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
 
-            df = dfs[[query_list[0]]]
-            df.columns.values[0] = 'occ'
-            df.is_copy = False
-            df.columns = ['occ']
-            # perform OR on the data, if one sensor is activated, the whole zone is considered occupied
-            for i in range(1, len(query_list)):
-                df.loc[:, 'occ'] += dfs[query_list[i]]
-            df.loc[:, 'occ'] = 1 * (df['occ'] > 0)
+        df = dfs[[query_list[0]]]
+        df.columns.values[0] = 'occ'
+        df.is_copy = False
+        df.columns = ['occ']
+        # perform OR on the data, if one sensor is activated, the whole zone is considered occupied
+        for i in range(1, len(query_list)):
+            df.loc[:, 'occ'] += dfs[query_list[i]]
+        df.loc[:, 'occ'] = 1 * (df['occ'] > 0)
 
-            return df.tz_localize(None)
-        else:
-            occupancy_array = self.advise_cfg["Advise"]["Occupancy"]
+        return df.tz_localize(None)
 
-            now_time = self.now.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
-            occupancy = []
+    def preprocess_occ_cfg(self):
 
-            while now_time <= self.now + timedelta(hours=self.horizon):
-                i = now_time.weekday()
+        occupancy_array = self.advise_cfg["Advise"]["Occupancy"]
 
-                for j in occupancy_array[i]:
-                    if in_between(now_time.time(), datetime.time(int(j[0].split(":")[0]), int(j[0].split(":")[1])),
-                                  datetime.time(int(j[1].split(":")[0]), int(j[1].split(":")[1]))):
-                        occupancy.append(j[2])
-                        break
+        now_time = self.now.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
+        occupancy = []
 
-                now_time += timedelta(minutes=self.interval)
+        while now_time <= self.now + timedelta(hours=self.horizon):
+            i = now_time.weekday()
 
-            return occupancy
+            for j in occupancy_array[i]:
+                if in_between(now_time.time(), datetime.time(int(j[0].split(":")[0]), int(j[0].split(":")[1])),
+                              datetime.time(int(j[1].split(":")[0]), int(j[1].split(":")[1]))):
+                    occupancy.append(j[2])
+                    break
+
+            now_time += timedelta(minutes=self.interval)
+
+        return occupancy
 
     def occupancy_archiver(self, start, end):
 
@@ -177,7 +179,15 @@ class DataManager:
         return df
 
 
-    def better_occupancy_config(self, date):
+    def better_occupancy_config(self, date, freq="1T"):
+        """
+        Gets the occupancy from the zone configuration file. Uses the provided date for which the prices should
+        hold. Cannot have Nan values.
+        :param date: The date for which we want to get the occupancy from config. 
+        :param freq: The frequency of time series. Default is one minute.
+        :return: pd.df columns="occ" with time_series index for the date provided and in naive datetime as 
+            provided by the configuration file. With freq as frequency. 
+        """
 
         occupancy = self.advise_cfg["Advise"]["Occupancy"]
 
@@ -187,30 +197,34 @@ class DataManager:
 
         start_date = date.replace(hour=0, minute=0, second=0)
         end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
-        date_range = pd.date_range(start=start_date, end=end_date, freq="1T")
-
-        def combine_date_time(time, date):
-            datetime_time = utils.get_time_datetime(time)
-            return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
+        date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 
         # create nan filled dataframe and populate it
         df_occupancy = pd.DataFrame(columns=["occ"], index=date_range)
 
         for interval_occupancy in date_occupancy:
             start, end, occ = interval_occupancy
-            occ = float(occ)
-            start = combine_date_time(start, date)
-            end = combine_date_time(end, date)
+            start = utils.combine_date_time(start, date)
+            end = utils.combine_date_time(end, date)
             # if we are going into the next day.
             if end <= start and end.hour == 0 and end.minute == 0:
                 end = end.replace(day=end.day + 1)
-            df_occupancy.loc[start:end, "occ"] = occ
+            if occ is None or occ == "None":
+                raise Exception("Config Occupancy should have no None.")
+            df_occupancy.loc[start:end, "occ"] = float(occ)
         return df_occupancy
 
 
-    def weather_fetch(self, fetch_attempts=10):
-
+    def weather_fetch(self, start=None, fetch_attempts=10):
+        """Gets the weather predictions from weather.gov
+        :param start: (utc datetime) when in the future the predictions should start
+        :param fetch_attempts: (int) number of attempts we should try to get weather from weather.gov
+        :return {(datetime.local coordinate time. Should be config timezone): float outside temperature}"""
+        # In UTC time.
         from dateutil import parser
+        if start is None:
+            start = self.now
+
         file_name = "./weather/weather_" + self.zone + "_" + self.controller_cfg["Building"] + ".json"
 
         coordinates = self.controller_cfg["Coordinates"]
@@ -240,7 +254,7 @@ class DataManager:
 
         # got an error on parse in the next line that properties doesnt exit
         json_start = parser.parse(myweather["properties"]["periods"][0]["startTime"])
-        if (json_start.hour < self.now.astimezone(tz=pytz.timezone(self.pytz_timezone)).hour) or \
+        if (json_start.hour < start.astimezone(tz=pytz.timezone(self.pytz_timezone)).hour) or \
                 (datetime.datetime(json_start.year, json_start.month, json_start.day).replace(
                     tzinfo=pytz.timezone(self.pytz_timezone)) <
                      datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC")).astimezone(
@@ -254,18 +268,38 @@ class DataManager:
 
         weather_predictions = {}
 
-        for i, data in enumerate(myweather["properties"]["periods"]):
-            hour = parser.parse(data["startTime"]).hour
-            weather_predictions[hour] = int(data["temperature"])
-            if i == self.horizon:
-                break
+        horizon_counter = 0
+        data_counter = 0
+        while horizon_counter <= self.horizon and data_counter < len(myweather["properties"]["periods"]):
+            data = myweather["properties"]["periods"][data_counter]
+            data_counter += 1
+            # The times are converted to UTC because we get timezone aware times from weather.gov.
+            start_datetime = parser.parse(data["startTime"]).astimezone(
+                         tz=pytz.timezone("UTC"))
+            end_datetime = parser.parse(data["endTime"]).astimezone(
+                         tz=pytz.timezone("UTC"))
+
+            # If the start time for which we need weather predictions is before the end time, then we are
+            # either in the weather interval, or it is in the future (as desired for forecasting).
+            if start <= end_datetime:
+                start_datetime_datamanger_timezone = start_datetime.astimezone(tz=pytz.timezone(self.pytz_timezone))
+                weather_predictions[start_datetime_datamanger_timezone.hour] = int(data["temperature"])
+                horizon_counter += 1
+
+        # make sure we got enough data.
+        # e.g. If horizon is 1 hour then we need two data points (current and next hours temperature).
+        assert len(weather_predictions.keys()) == self.horizon + 1
 
         return weather_predictions
 
-    def thermostat_setpoints(self, start, end):
-        """Gets setpoints"""
-
-        WINDOW_SIZE = 1 # min for getting data from archiver.
+    def thermostat_setpoints(self, start, end, window_size=1):
+        """
+        Gets the thermostat setpoints from archiver from start to end. Does not preprocess the data.
+        :param start: datetime in utc time.
+        :param end: datetime in utc time.
+        :param window_size: The frequency with which to get the data.
+        :return: pd.df columns="t_high", "t_low" with timeseries in utc time with freq=window_size. 
+        """
 
         cooling_setpoint_query = """SELECT ?zone ?uuid FROM %s WHERE {
                     ?tstat rdf:type brick:Thermostat .
@@ -317,7 +351,7 @@ class DataManager:
                                         'Selectors': [mdal.MEAN, mdal.MEAN]
                                            , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
                                                       'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                                      'WindowSize': str(WINDOW_SIZE) + 'min',
+                                                      'WindowSize': str(window_size) + 'min',
                                                       'Aligned': True}}
 
             # get the thermostat data
@@ -326,24 +360,6 @@ class DataManager:
                                                           dict["cooling_setpoint"]: 't_high'})
 
         return zone_setpoint_data
-
-        #
-        # uuids = [self.advise_cfg["Data_Manager"]["UUIDS"]['Thermostat_high'],
-        #          self.advise_cfg["Data_Manager"]["UUIDS"]['Thermostat_low'],
-        #          self.advise_cfg["Data_Manager"]["UUIDS"]['Thermostat_mode']]
-        #
-        # c = mdal.MDALClient("xbos/mdal", client=self.c)
-        # dfs = c.do_query({'Composition': uuids,
-        #                   'Selectors': [mdal.MEAN, mdal.MEAN, mdal.MEAN],
-        #                   'Time': {'T0': (self.now - timedelta(minutes=10)).strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-        #                            'T1': self.now.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-        #                            'WindowSize': '1min',
-        #                            'Aligned': True}})
-        #
-        # df = pd.concat([dframe for uid, dframe in dfs.items()], axis=1)
-        # df = df.rename(columns={uuids[0]: 'T_High', uuids[1]: 'T_Low', uuids[2]: 'T_Mode'})
-        #
-        # return df['T_High'][-1], df['T_Low'][-1], df['T_Mode'][-1]
 
     def prices(self):
 
@@ -387,9 +403,15 @@ class DataManager:
 
         return pricing
 
-    def better_prices(self, date):
-        """For the whole day."""
-
+    def better_prices(self, date, freq="1T"):
+        """
+        Gets the prices from the building configuration file. Uses the provided date for which the prices should
+        hold. Cannot have Nan values.
+        :param date: The date for which we want to get the prices from config. 
+        :param freq: The frequency of time series. Default is one minute.
+        :return: pd.df columns="price" with time_series index for the date provided and in naive datetime as 
+            provided by the configuration file. 
+        """
         price_array = self.controller_cfg["Pricing"][self.controller_cfg["Pricing"]["Energy_Rates"]]
 
 
@@ -398,49 +420,56 @@ class DataManager:
             # (always says 0, problem unless energy its free and noone informed me)
             raise ValueError('SERVER MODE IS NOT YET IMPLEMENTED FOR ENERGY PRICING')
         else:
-
+            # Whether to get DR prices.
             DR_start_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Start"])
             DR_finish_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Finish"])
             DR_price = self.controller_cfg["Pricing"]["DR_Price"]
             is_DR = self.controller_cfg["Pricing"]["DR"]
 
-
+            # The type of pricing to choose as integer because that's how we index in the config file.
             is_holiday_weekend = date.weekday() >= 5 or self.controller_cfg["Pricing"]["Holiday"]
-
             day_type = int(is_holiday_weekend)
 
+            # Get prices from config as array.
             date_prices = np.array(price_array[day_type])
 
+            # The start and end day for the date for which to get prices.
             start_date = date.replace(hour=0, minute=0, second=0)
             end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
-            date_range = pd.date_range(start=start_date, end=end_date, freq="1T")
+            date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 
-            def combine_date_time(time, date):
-                datetime_time = utils.get_time_datetime(time)
-                return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
 
-            # create nan filled dataframe and populate it
+            # create nan filled dataframe and then populate it
             df_prices = pd.DataFrame(columns=["price"], index=date_range)
 
             for interval_price in date_prices:
                 start, end, price = interval_price
                 price = float(price)
-                start = combine_date_time(start, date)
-                end = combine_date_time(end, date)
+                start = utils.combine_date_time(start, date)
+                end = utils.combine_date_time(end, date)
                 # if we are going into the next day.
                 if end <= start and end.hour == 0 and end.minute == 0:
                     end = end.replace(day=end.day + 1)
+                if price is None or price == "None":
+                    raise Exception("Prices should have no None.")
                 df_prices.loc[start:end] = price
 
             # setting dr prices.
             if is_DR:
                 df_prices.loc[DR_start_time:DR_finish_time] = DR_price
 
-
         return df_prices
 
-    def better_safety(self, date):
-        # for whole day.
+
+    def better_safety(self, date, freq="1T"):
+        """
+        Gets the safety_setpoints from the zone configuration file. Uses the provided date for which the setpoints should
+        hold. Cannot have Nan values.
+        :param date: The date for which we want to get the safety setpoints from config. 
+        :param freq: The frequency of time series. Default is one minute.
+        :return: pd.df columns=t_high, t_low with time_series index for the date provided and in naive datetime as 
+            provided by the configuration file. 
+        """
 
         setpoints_array = self.advise_cfg["Advise"]["SafetySetpoints"]
 
@@ -450,19 +479,15 @@ class DataManager:
 
         start_date = date.replace(hour=0, minute=0, second=0)
         end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
-        date_range = pd.date_range(start=start_date, end=end_date, freq="1T")
-
-        def combine_date_time(time, date):
-            datetime_time = utils.get_time_datetime(time)
-            return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
+        date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 
         # create nan filled dataframe and populate it
         df_setpoints = pd.DataFrame(columns=["t_high", "t_low"], index=date_range)
 
         for interval_setpoints in date_setpoints:
             start, end, t_low, t_high = interval_setpoints
-            start = combine_date_time(start, date)
-            end = combine_date_time(end, date)
+            start = utils.combine_date_time(start, date)
+            end = utils.combine_date_time(end, date)
             # if we are going into the next day.
             if end <= start and end.hour == 0 and end.minute == 0:
                 end = end.replace(day=end.day + 1)
@@ -476,11 +501,18 @@ class DataManager:
 
         return df_setpoints
 
-    def better_comfortband(self, date):
-        # for whole day.
+    def better_comfortband(self, date, freq="1T"):
+        """
+        Gets the comfortband from the zone configuration file. Uses the provided date for which the comfortband should
+        hold. If there are nan's in the comfortband, then those will be replaced with the saftysetpoints.
+        :param date: The date for which we want to get the comfortband from config. 
+        :param freq: The frequency of time series. Default is one minute.
+        :return: pd.df columns=t_high, t_low with time_series index for the date provided and in naive datetime as 
+            provided by the configuration file. 
+        """
 
         setpoints_array = self.advise_cfg["Advise"]["Comfortband"]
-        df_safety = self.better_safety(date)
+        df_safety = self.better_safety(date, freq)
 
         weekday = date.weekday()
 
@@ -489,19 +521,15 @@ class DataManager:
 
         start_date = date.replace(hour=0, minute=0, second=0)
         end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
-        date_range = pd.date_range(start=start_date, end=end_date, freq="1T")
-
-        def combine_date_time(time, date):
-            datetime_time = utils.get_time_datetime(time)
-            return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
+        date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 
         # create nan filled dataframe and populate it
         df_setpoints = pd.DataFrame(columns=["t_high", "t_low"], index=date_range)
 
         for interval_setpoints in date_setpoints:
             start, end, t_low, t_high = interval_setpoints
-            start = combine_date_time(start, date)
-            end = combine_date_time(end, date)
+            start = utils.combine_date_time(start, date)
+            end = utils.combine_date_time(end, date)
             # if we are going into the next day.
             if end <= start and end.hour == 0 and end.minute == 0:
                 end = end.replace(day=end.day + 1)
@@ -576,24 +604,20 @@ class DataManager:
 
 
 if __name__ == '__main__':
-    # Test for ciee
-    with open("Buildings/ciee/ciee.yml", 'r') as ymlfile:
-        cfg = yaml.load(ymlfile)
+    building = "ciee"
+    zone = "HVAC_Zone_Centralzone"
+    cfg = utils.get_config(building)
+    advise_cfg = utils.get_zone_config(building, zone)
 
-    with open("Buildings/" + cfg["Building"] + "/ZoneConfigs/HVAC_Zone_Centralzone.yml", 'r') as ymlfile:
-        advise_cfg = yaml.load(ymlfile)
 
-    if cfg["Server"]:
-        c = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
-    else:
-        c = get_client()
+    client = utils.choose_client()
 
-    dm = DataManager(cfg, advise_cfg, c, "HVAC_Zone_Centralzone")
+    dm = DataManager(cfg, advise_cfg, client, "HVAC_Zone_Centralzone")
 
     print "Weather Predictions:"
-    # print dm.weather_fetch()
+    print dm.weather_fetch()
     # print "Occupancy Data"
-    print dm.preprocess_occ()
+    # print dm.preprocess_occ()
     # print "Thermostat Setpoints:"
     # print dm.thermostat_setpoints()
     # print "Prices:"

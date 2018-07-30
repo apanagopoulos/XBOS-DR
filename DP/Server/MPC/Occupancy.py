@@ -74,7 +74,7 @@ def predict(data, now, similar_moments, prediction_time, resample_time):
     """
     # initialize the prediction list
     prediction = np.zeros((int(math.ceil(prediction_time / resample_time)) + 1, len(data.columns)))
-    # calculate the probability of occupancu
+    # calculate the probability of occupancy
     for i in similar_moments:
         prediction += float(1.0 / float(len(similar_moments))) * data[
             (data.index >= i) & (data.index <= i + timedelta(minutes=prediction_time))]

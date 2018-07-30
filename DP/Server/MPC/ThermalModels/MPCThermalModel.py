@@ -62,19 +62,19 @@ class MPCThermalModel:
 
         # the data that will be stored through the MPCThermal Model to make usage easier.
         self.zoneTemperatures = None
-        self.weatherPredictions = None  # for now, the hour from now corresponds to index nr. We always start in 0th hour.
-        self.lastAction = None
+        self.outside_temperature = None  # hour corresponds to PST hour of the day used.
+        self.last_action = None
 
     def set_last_action(self, action):
         """Set the action that was last used by MPC for later online training.
         :param action: (int) action nr as given in utils."""
-        self.lastAction = action
+        self.last_action = action
 
-    def set_weather_predictions(self, weather_predictions):
+    def set_outside_temperature(self, outside_temperature):
         """Set weather predictions after last fit to store for later predictions.
-        :param weather_predictions: (float []) 0th index corresponds to t_out now and 1st index to the temperature 
+        :param outside_temperature: (float []) 0th index corresponds to t_out now and 1st index to the temperature 
         outside in one hour from now, etc. Now is defined as the start time of the advise graph."""
-        self.weatherPredictions = weather_predictions
+        self.outside_temperature = outside_temperature
 
     def _datapoint_to_dataframe(self, interval, t_in, action, t_out, zone_temperatures):
         """A helper function that converts a datapoint to a pd.df used for predictions.
@@ -87,48 +87,29 @@ class MPCThermalModel:
             else:
                 X["t_in"] = t_in
 
-        return pd.DataFrame(X, index=[0])
+        return pd.DataFrame(X, index=[0], dtype=float)
 
-    def set_temperatures_and_fit(self, curr_zone_temperatures, interval=15):
+    def set_temperatures(self, curr_zone_temperatures, interval=15):
         """
-        performs one update step for the thermal model and
-        stores curr temperature for every zone. Call whenever we are starting new interval.
+        Stores curr temperature for every zone. Call whenever we are starting new interval.
+        :param curr_zone_temperatures: {zone: temperature}
+        :return: None
+        """
+        # set new zone temperatures.
+        self.zoneTemperatures = curr_zone_temperatures
+        return
+
+    def update(self, curr_zone_temperatures, interval=15):
+
+        """Performs one update step for the thermal model. Call at the beginning of each interval once we know the
+        new temperatures but before we set them.
         :param curr_zone_temperatures: {zone: temperature}
         :param interval: The delta time since the last action was called. 
         :return: None
         """
-
-        # store old temperatures for potential fitting
-        old_zone_temperatures = self.zoneTemperatures
-
-        # set new zone temperatures.
-        self.zoneTemperatures = curr_zone_temperatures
-
         # TODO Fix this to get online learning going.
-        return
+        pass
 
-        # TODO can't fit? should we allow?
-        if self.lastAction is None or self.weatherPredictions is None:
-            return
-
-        action = self.lastAction  # TODO get as argument?
-
-        t_out = self.weatherPredictions[now.hour]
-
-        y = curr_zone_temperatures[self.zone]
-        X = self._datapoint_to_dataframe(interval, action, t_out, old_zone_temperatures)
-
-        # make sure we have no nan values. TODO make ure we are checking better.
-        assert not X.isnull().values.any()
-
-        # online learning the new data
-        super(MPCThermalModel, self).updateFit(X, y)
-
-        # TODO DEBUG MODE?
-        # # store the params for potential evaluations.
-        # self._oldParams[zone].append(self.zoneThermalModels[zone]._params)
-        # # to make sure oldParams holds no more than 50 values for each zone
-        # self._oldParams[zone] = self._oldParams[zone][-50:]
 
     def _prediction_test(self, X, thermal_model):
         """Takes the data X and for each datapoint runs the thermal model for each possible actions and 
@@ -155,6 +136,12 @@ class MPCThermalModel:
             main_action = row["MAIN_ACTION"]
 
             if is_two_stage:
+                # can't have cooling that's higher than 0 and heating that's lower.
+                if max(row["COOLING_ACTION"], row["TWO_STAGE_COOLING_ACTION"]) >= row["T_IN"] or \
+                                min(row["HEATING_ACTION"], row["TWO_STAGE_HEATING_ACTION"]) <= row["T_IN"]:
+                    return False
+
+                # checks if the actions are in the correct order
                 if main_action == utils.NO_ACTION:
                     if max(row["COOLING_ACTION"], row["TWO_STAGE_COOLING_ACTION"]) \
                             < row["NO_ACTION"] \
@@ -167,6 +154,12 @@ class MPCThermalModel:
                             < row["HEATING_ACTION"] <= row["TWO_STAGE_HEATING_ACTION"]:
                         return True
             else:
+                # can't have cooling that's higher than 0 and heating that's lower.
+                if row["COOLING_ACTION"] >= row["T_IN"] or \
+                                row["HEATING_ACTION"] <= row["T_IN"]:
+                    return False
+
+                # checks if the actions are in the correct order
                 if row["COOLING_ACTION"] < row["NO_ACTION"] < row["HEATING_ACTION"]:
                     return True
 
@@ -190,6 +183,7 @@ class MPCThermalModel:
             if is_two_stage:
                 differences.append(np.abs(X["TWO_STAGE_HEATING_ACTION"] - X["T_IN"]))
                 differences.append(np.abs(X["TWO_STAGE_COOLING_ACTION"] - X["T_IN"]))
+
 
             # check if every difference is in sensible band and not nan. We can check if the prediction is nan
             # by checking if the difference is nan, because np.nan + x = np.nan
@@ -229,7 +223,7 @@ class MPCThermalModel:
         :param action: (float)
         :param outside_temperature: 
         :param interval: 
-        :param time: the hour index for self.weather_predictions. 
+        :param time: the hour index for self.outside_temperature. 
         TODO understand how we can use hours if we look at next days .(i.e. horizon extends over midnight.)
         :param debug: wether to debug, meaning return the type of thermal model that causes each prediction.
         :return: not debug: (np.array) predictions in order. 
@@ -239,8 +233,8 @@ class MPCThermalModel:
             interval = self.interval
         if outside_temperature is None:
             assert time is not None
-            assert self.weatherPredictions is not None
-            t_out = self.weatherPredictions[time]
+            assert self.outside_temperature is not None
+            t_out = self.outside_temperature[time]
         else:
             t_out = outside_temperature
 

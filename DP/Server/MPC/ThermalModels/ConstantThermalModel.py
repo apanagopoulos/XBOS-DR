@@ -1,7 +1,7 @@
 
 import numpy as np
 import pandas as pd
-from MPC.ParentThermalModel import ParentThermalModel
+from ParentThermalModel import ParentThermalModel
 
 import yaml
 from scipy.optimize import curve_fit

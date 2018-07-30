@@ -1,40 +1,37 @@
-#this is the plotter for the MPC graph
+# this is the plotter for the MPC graph
 
-import pandas as pd
-import numpy as np
 import datetime
-import pytz
-import yaml
 import os
 import string
+
+import numpy as np
+import pandas as pd
+import plotly.graph_objs as go
+import pytz
+import yaml
+from xbos import get_client
+from xbos.devices.thermostat import Thermostat
 
 # be careful of circular import.
 # https://stackoverflow.com/questions/11698530/two-python-modules-require-each-others-contents-can-that-work
 import ThermalDataManager
 
-
-from xbos import get_client
-
-from xbos.devices.thermostat import Thermostat
-
-import plotly.graph_objs as go
-
 try:
-	import pygraphviz
-	from networkx.drawing.nx_agraph import graphviz_layout
-	#print("using package pygraphviz")
+    import pygraphviz
+    from networkx.drawing.nx_agraph import graphviz_layout
+# print("using package pygraphviz")
 except ImportError:
-	try:
-		import pydotplus
-		from networkx.drawing.nx_pydot import graphviz_layout
-		#print("using package pydotplus")
-	except ImportError:
-		print()
-		print("Both pygraphviz and pydotplus were not found ")
-		print("see http://networkx.github.io/documentation"
-			  "/latest/reference/drawing.html for info")
-		print()
-		raise
+    try:
+        import pydotplus
+        from networkx.drawing.nx_pydot import graphviz_layout
+        # print("using package pydotplus")
+    except ImportError:
+        print()
+        print("Both pygraphviz and pydotplus were not found ")
+        print("see http://networkx.github.io/documentation"
+              "/latest/reference/drawing.html for info")
+        print()
+        raise
 
 '''
 Utility constants
@@ -51,6 +48,8 @@ SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(__file__)  # this is true fo
 '''
 Utility functions
 '''
+
+
 # ============ BUILDING AND ZONE GETTER ========
 def choose_building_and_zone():
     print "-----------------------------------"
@@ -83,12 +82,14 @@ def choose_building_and_zone():
     print "-----------------------------------"
     return building, zone
 
+
 # ============ DATE FUNCTIONS ============
 
 def get_utc_now():
     """Gets current time in utc time.
     :return Datetime in utctime zone"""
     return datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC"))
+
 
 def in_between(now, start, end):
     """Finds whether now is between start and end. Takes care of cases such as start=11:00pm and end=1:00am 
@@ -106,6 +107,24 @@ def in_between(now, start, end):
         return True
 
 
+def combine_date_time(time, date):
+    """Combines the time and date to a combined datetime.
+    :param time: (str) HH:MM
+    :param date: (datetime)
+    :returns datetime with date from date and time from time. But with seconds as 0."""
+    datetime_time = get_time_datetime(time)
+    return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
+
+
+def in_between_datetime(now, start, end):
+    """Finds whether now is between start and end.
+    :param now: (datetime) 
+    :param start: (datetime) 
+    :param end: (datetime) 
+    :return (boolean)"""
+    return start <= now <= end
+
+
 def get_time_datetime(time_string):
     """Gets datetime from string with format HH:MM.
     :param date_string: string of format HH:MM
@@ -113,12 +132,18 @@ def get_time_datetime(time_string):
     return datetime.datetime.strptime(time_string, "%H:%M").time()
 
 
-def get_mdal_string_to_datetime(date_string):
+def get_mdal_string_to_datetime(date_string, with_utc=True):
     """Gets datetime from string with format Year-Month-Day Hour:Minute:Second UTC. Note, string should be for utc
     time.
     :param date_string: string of format Year-Month-Day Hour:Minute:Second UTC.
-    :returns datetime.time() object in UTC time. """
-    return datetime.datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S %Z").replace(tzinfo=pytz.timezone("UTC"))
+    :param with_utc: boolean indicating wether to localize to UTC time.
+    :returns datetime.time() object in UTC time or naive time. """
+    date_datetime = datetime.datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S %Z")
+    if with_utc:
+        return date_datetime.replace(tzinfo=pytz.timezone("UTC"))
+    else:
+        return date_datetime
+
 
 def get_mdal_datetime_to_string(date_object):
     """Gets string from datetime object. In UTC Time.
@@ -136,6 +161,7 @@ def round_increment(data, precision=0.05):
     :return (np.array or float) of rounded floats."""
     # source for rounding: https://stackoverflow.com/questions/2272149/round-to-5-or-other-number-in-python
     return precision * np.round(data / float(precision))
+
 
 def is_cooling(action_data):
     """Returns boolen area of actions which were cooling (either two or single stage).
@@ -158,7 +184,6 @@ def choose_client(cfg=None):
 
 
 def get_config(building):
-
     config_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + building + ".yml"
     try:
         with open(config_path, "r") as f:
@@ -179,31 +204,30 @@ def get_zone_config(building, zone):
         return
     return cfg
 
+
 def get_zone_log(building, zone):
-
-
     log_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + "Logs/" + zone + ".log"
 
-	## fix for one lines
+    ## fix for one lines
     try:
 
-		f = open (log_path, "r")
-		log=f.read()
-		log = string.replace(log, "UTCTHERMOSTAT", "UTC\nTHERMOSTAT")
-		f.close()
+        f = open(log_path, "r")
+        log = f.read()
+        log = string.replace(log, "UTCTHERMOSTAT", "UTC\nTHERMOSTAT")
+        f.close()
 
-		f = open(log_path, 'w')
-		f.write(log)
-		f.close()
+        f = open(log_path, 'w')
+        f.write(log)
+        f.close()
     except:
         print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, log_path))
         return
-	## end of fix DELETE THIS WHEN ALL LOGS ARE FIXED!
+    ## end of fix DELETE THIS WHEN ALL LOGS ARE FIXED!
 
     try:
-        with open (log_path, "r") as f:
-			### fix for same line logs ###
-            log=f.readlines()
+        with open(log_path, "r") as f:
+            ### fix for same line logs ###
+            log = f.readlines()
     except:
         print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, log_path))
         return
@@ -211,7 +235,8 @@ def get_zone_log(building, zone):
 
 
 # Maybe put in ThermalDataManager because of circular import.
-def get_data(building=None, client=None, cfg=None, start=None, end=None, days_back=50, evaluate_preprocess=False, force_reload=False):
+def get_data(building=None, client=None, cfg=None, start=None, end=None, days_back=50, evaluate_preprocess=False,
+             force_reload=False):
     """
     Get preprocessed data.
     :param building: (str) building name
@@ -285,7 +310,6 @@ def get_raw_data(building=None, client=None, cfg=None, start=None, end=None, day
     if start is None:
         start = end - datetime.timedelta(days=days_back)
 
-
     # inside and outside data data
     import pickle
     try:
@@ -327,7 +351,7 @@ def get_mdal_data(mdal_client, query):
 
     # To get logarithmic runtime we take splits which are powers of two.
     max_interval = datetime.timedelta(hours=12)  # the maximum interval length in which to split the data.
-    max_num_splits = int(time_frame.total_seconds()//max_interval.total_seconds())
+    max_num_splits = int(time_frame.total_seconds() // max_interval.total_seconds())
     all_splits = [1]
     for _ in range(2, max_num_splits):
         power_split = all_splits[-1] * 2
@@ -344,10 +368,10 @@ def get_mdal_data(mdal_client, query):
         pre_look_ahead = time_frame / num_splits
 
         # to round down to nearest window size multiple
-        num_window_in_pre_look = pre_look_ahead.total_seconds()//WINDOW_SIZE.total_seconds()
+        num_window_in_pre_look = pre_look_ahead.total_seconds() // WINDOW_SIZE.total_seconds()
         look_ahead = datetime.timedelta(seconds=WINDOW_SIZE.total_seconds() * num_window_in_pre_look)
 
-        print("Attempting to get data in %f day intervals." % (look_ahead.total_seconds()/(60*60*24)))
+        print("Attempting to get data in %f day intervals." % (look_ahead.total_seconds() / (60 * 60 * 24)))
 
         temp_start = start
         temp_end = temp_start + look_ahead
@@ -380,12 +404,10 @@ def get_mdal_data(mdal_client, query):
             print("Succeeded.")
             break
 
-
     if not received_all_data:
         raise Exception("WARNING: Unable to get data form MDAL.")
 
     return pd.concat(outside_data)
-
 
 
 def concat_zone_data(thermal_data):
@@ -399,9 +421,8 @@ def concat_zone_data(thermal_data):
 
 def as_pandas(result):
     time = result[list(result.keys())[0]][:, 0]
-    df = pd.DataFrame(time, columns = ['Time'])
+    df = pd.DataFrame(time, columns=['Time'])
     df['Time'] = pd.to_datetime(df['Time'], unit='s')
-
 
     for key in result:
         df[key] = result[key][:, 1].tolist()
@@ -472,11 +493,11 @@ def get_thermostats(client, hod, building):
     tstats = {tstat["?zone"]: Thermostat(client, tstat["?uri"]) for tstat in tstat_query_data}
     return tstats
 
+
 # ============ PLOTTING FUNCTIONS ============
 
 
 def plotly_figure(G, path=None):
-
     pos = graphviz_layout(G, prog='dot')
 
     edge_trace = go.Scatter(
@@ -495,18 +516,19 @@ def plotly_figure(G, path=None):
         edge_trace['y'] += [y0, y1, None]
         my_annotations.append(
             dict(
-                x=(x0+x1)/2,
-                y=(y0+y1)/2,
+                x=(x0 + x1) / 2,
+                y=(y0 + y1) / 2,
                 xref='x',
                 yref='y',
-                text="" + G.get_edge_data(edge[0], edge[1])['action'] + G.get_edge_data(edge[0], edge[1])['model_type'][0][0], # TODO for multigraph use [0] to get the frist edge. Also, only using the first letter to identify the model.
+                text="" + G.get_edge_data(edge[0], edge[1])['action'] +
+                     G.get_edge_data(edge[0], edge[1])['model_type'][0][0],
+                # TODO for multigraph use [0] to get the frist edge. Also, only using the first letter to identify the model.
                 showarrow=False,
                 arrowhead=2,
                 ax=0,
                 ay=0
             )
         )
-
 
     node_trace = go.Scatter(
         x=[],
@@ -537,8 +559,8 @@ def plotly_figure(G, path=None):
         node_trace['y'].append(y)
 
         node_info = "Time: +{0}<br>Temps: {1}<br>Usage Cost: {2}".format(node.time,
-                                                                           node.temps,
-                                                                           G.node[node]['usage_cost'])
+                                                                         node.temps,
+                                                                         G.node[node]['usage_cost'])
 
         node_trace['text'].append(node_info)
 
@@ -548,7 +570,6 @@ def plotly_figure(G, path=None):
             node_trace['marker']['color'].append('rgba(255, 0, 0, 1)')
         else:
             node_trace['marker']['color'].append('rgba(0, 0, 255, 1)')
-
 
     fig = go.Figure(data=go.Data([edge_trace, node_trace]),
                     layout=go.Layout(
@@ -563,6 +584,58 @@ def plotly_figure(G, path=None):
                         xaxis=go.XAxis(showgrid=False, zeroline=False, showticklabels=False),
                         yaxis=go.YAxis(showgrid=False, zeroline=False, showticklabels=False)))
     return fig
+
+
+# ========= Multithreading ========
+
+class Barrier:
+    """Class which behaves like python3's Barrier class.
+    NOTE: Never change any of the internal logic or set variables after they were set in the init."""
+
+    def __init__(self, num_threads):
+        import threading
+        self.num_threads = num_threads
+        self.count = 0
+        self.mutex = threading.Semaphore(1)
+        self.barrier = threading.Semaphore(0)
+
+        self.is_set = True
+
+    def wait(self):
+        """Behaves like wait function from Barrier class. Make all threads wait together and then release them."""
+
+        self.mutex.acquire()
+        if not self.is_set:
+            self.reset()
+        self.mutex.release()
+
+        # increment counter by one to indicate that another thread is waiting now.
+        self.mutex.acquire()
+        self.count = self.count + 1
+        self.mutex.release()
+
+        # check if enough threads are waiting. If enough are waiting, the barrier will be opened
+        if self.count == self.num_threads:
+            self.barrier.release()
+
+        # if not enough threads are waiting, make the thread wait for the barrier to be released in the if statement.
+        self.barrier.acquire()
+        # release the barrier so other threads can use it
+        self.barrier.release()
+
+        # we set the flag to false. However, this should be fine since every thread should already be past
+        # the if statement that checks whether the Barrier is_set.
+        self.mutex.acquire()
+        if self.is_set:
+            self.is_set = False
+        self.mutex.release()
+
+    def reset(self):
+        """Resets the barrier class."""
+        self.count = 0
+        self.barrier.acquire()
+        self.is_set = True
+
 
 if __name__ == "__main__":
     # bldg = "csu-dominguez-hills"
@@ -580,12 +653,46 @@ if __name__ == "__main__":
     # print("inside")
     # th_data = t_man._preprocess_thermal_data(use_data, outside, True)
 
+    #
+    # import pickle
+    # with open("u_p", "r") as f:
+    #     th = pickle.load(f)
+    #
+    # zone = "HVAC_Zone_SAC_2101"
+    # zone_data = th[zone]
+    # print(zone_data[zone_data["action"] == 5].shape)
+    # print(zone_data[zone_data["action"] == 2].shape)
 
-    import pickle
-    with open("u_p", "r") as f:
-        th = pickle.load(f)
+    test_barrier = True
+    if test_barrier:
+        barrier = Barrier(2)
+        import time
+        import threading
 
-    zone = "HVAC_Zone_SAC_2101"
-    zone_data = th[zone]
-    print(zone_data[zone_data["action"] == 5].shape)
-    print(zone_data[zone_data["action"] == 2].shape)
+
+        def func1():
+            time.sleep(3)
+            #
+            barrier.wait()
+            #
+            print('Working from func1')
+            return
+
+
+        def func2():
+            time.sleep(5)
+            #
+            barrier.wait()
+            #
+            print('Working from func2')
+            return
+
+
+        threading.Thread(target=func1).start()
+        threading.Thread(target=func2).start()
+
+        time.sleep(6)
+
+        # check if reset
+        threading.Thread(target=func1).start()
+        threading.Thread(target=func2).start()
