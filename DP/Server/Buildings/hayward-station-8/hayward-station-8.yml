@@ -30,4 +30,4 @@ Pricing:
     - ['21:30', '00:00', 0.18618]
   - - ['00:00', '00:00', 0.18618]
 Pytz_Timezone: America/Los_Angeles
-Server: true
+Server: false

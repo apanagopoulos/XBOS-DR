@@ -14,7 +14,7 @@ from xbos.devices.thermostat import Thermostat
 
 # be careful of circular import.
 # https://stackoverflow.com/questions/11698530/two-python-modules-require-each-others-contents-can-that-work
-import ThermalDataManager
+from ThermalDataManager import ThermalDataManager
 
 try:
     import pygraphviz
@@ -108,7 +108,7 @@ def in_between(now, start, end):
 
 
 def combine_date_time(time, date):
-    """Combines the time and date to a combined datetime.
+    """Combines the time and date to a combined datetime. Specific use in DataManager functions.
     :param time: (str) HH:MM
     :param date: (datetime)
     :returns datetime with date from date and time from time. But with seconds as 0."""
@@ -434,6 +434,121 @@ def as_pandas(result):
     df = df.set_index('Time')
     return df
 
+# TODO Finsih this up once i have more energy. Make it return a dataframe.
+def get_outside_temperatures(building_config, start, end, data_manager, thermal_data_manager):
+    """
+    Get outside weather from start to end. Will combine historic and weather predictions data when necessary.
+    :param start: datetime timezone aware
+    :param end: datetime timezone aware
+    :return: {int hour: float temperature}
+    """
+    # we might have that the given now is before the actual current time
+    # hence need to get historic data and combine with weather predictions.
+
+    # For finding out if start or/and end are before or after the current time.
+    utc_now = get_utc_now()
+
+    # Set start and end to correct timezones
+    cfg_timezone = pytz.timezone(building_config["Pytz_Timezone"])
+    start_utc = start.astimezone(tz=pytz.utc)
+    end_utc = end.astimezone(tz=pytz.utc)
+    start_cfg_timezone = start.astimezone(tz=cfg_timezone)
+    end_cfg_timezone = end.astimezone(tz=cfg_timezone)
+    now_cfg_timezone = utc_now.astimezone(tz=cfg_timezone)
+
+    # If simulation window is partially in the past and in the future
+    if in_between_datetime(utc_now, start_utc, end_utc):
+        historic_start_utc = start_utc
+        historic_end_utc = utc_now
+        future_start_utc = utc_now
+        future_end_utc = end_utc
+
+        historic_start_cfg_timezone = start_cfg_timezone
+        historic_end_cfg_timezone = now_cfg_timezone
+        future_start_cfg_timezone = now_cfg_timezone
+        future_end_cfg_timezone = end_cfg_timezone
+
+    # If simulation window is fully in the future
+    elif start_utc >= utc_now:
+        historic_start_utc = None
+        historic_end_utc = None
+        future_start_utc = start_utc
+        future_end_utc = end_utc
+
+        historic_start_cfg_timezone = None
+        historic_end_cfg_timezone = None
+        future_start_cfg_timezone = start_cfg_timezone
+        future_end_cfg_timezone = end_cfg_timezone
+
+    # If simulation window is fully in the past
+    else:
+        historic_start_utc = start_utc
+        historic_end_utc = end_utc
+        future_start_utc = None
+        future_end_utc = None
+
+        historic_start_cfg_timezone = start_cfg_timezone
+        historic_end_cfg_timezone = end_cfg_timezone
+        future_start_cfg_timezone = None
+        future_end_cfg_timezone = None
+
+    # Populating the outside_temperatures dictionary for MPC use. Ouput is in cfg timezone.
+    outside_temperatures = {}
+    if future_start_utc is not None:
+        # TODO implement end for weather_fetch
+        future_weather = data_manager.weather_fetch(start=future_start_utc)
+        outside_temperatures = future_weather
+
+    # Combining historic data with outside_temperatures correctly if exists.
+    if historic_start_utc is not None:
+        historic_weather = thermal_data_manager._get_outside_data(historic_start_utc,
+                                                                  historic_start_utc, inclusive=True)
+        historic_weather = thermal_data_manager._preprocess_outside_data(historic_weather.values())
+
+        # Down sample the historic weather to hourly entries, and take the mean for each hour.
+        historic_weather = historic_weather.groupby([pd.Grouper(freq="1H")])["t_out"].mean()
+
+        # Convert historic_weather to cfg timezone.
+        historic_weather.index = historic_weather.index.tz_convert(tz=building_config["Pytz_Timezone"])
+
+        # Popluate the outside_temperature array. If we have the simulation time in the past and future then
+        # we will take a weighted averege of the historic and future temperatures in the hour in which
+        # historic_end and future_start happen.
+        for row in historic_weather.iteritems():
+            row_time, t_out = row[0], row[1]
+
+            # taking a weighted average of the past and future outside temperature since for now
+            # we only have one outside temperature per hour.
+            if row_time.hour in outside_temperatures and \
+                            row_time.hour == historic_end_cfg_timezone.hour:
+
+                future_t_out = outside_temperatures[row_time.hour]
+
+                # Checking if start and end are in the same hour, because then we have to weigh the temperature by
+                # less.
+                if historic_end_cfg_timezone.hour ==\
+                       historic_start_cfg_timezone.hour:
+                    historic_weight = (historic_end_cfg_timezone - historic_start_cfg_timezone).seconds // 60
+                else:
+                    historic_weight = historic_end_cfg_timezone.minute
+                if future_start_cfg_timezone.hour ==\
+                        future_end_cfg_timezone.hour:
+                    future_weight = (future_end_cfg_timezone - future_start_cfg_timezone).seconds // 60
+                else:
+                    # the remainder of the hour.
+                    future_weight = 60 - future_start_cfg_timezone.minute
+                # Normalize
+                total_weight = future_weight + historic_weight
+                future_weight /= float(total_weight)
+                historic_weight /= float(total_weight)
+
+                outside_temperatures[row_time.hour] = future_weight * future_t_out + \
+                                                      historic_weight * float(t_out)
+
+            else:
+                outside_temperatures[row_time.hour] = float(t_out)
+
+    return outside_temperatures
 
 # ============ THERMOSTAT FUNCTIONS ============
 

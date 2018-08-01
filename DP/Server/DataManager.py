@@ -18,6 +18,8 @@ import utils
 # TODO add energy data acquisition
 # TODO FIX DAYLIGHT TIME CHANGE PROBLEMS
 
+# TODO NOTE: The better_ datemethods all take the end inclusive from the config files.
+
 # util function. should be in util class.
 def getDatetime(date_string):
     """Gets datetime from string with format HH:MM.
@@ -179,15 +181,17 @@ class DataManager:
         return df
 
 
-    def better_occupancy_config(self, date, freq="1T"):
+    def get_better_occupancy_config(self, date, freq="1T"):
         """
         Gets the occupancy from the zone configuration file. Uses the provided date for which the prices should
         hold. Cannot have Nan values.
-        :param date: The date for which we want to get the occupancy from config. 
+        :param date: The date for which we want to get the occupancy from config. Timezone aware.
         :param freq: The frequency of time series. Default is one minute.
-        :return: pd.df columns="occ" with time_series index for the date provided and in naive datetime as 
-            provided by the configuration file. With freq as frequency. 
+        :return: pd.df columns="occ" with time_series index for the date provided and in timezone aware
+         datetime as provided by the configuration file. With freq as frequency. 
         """
+        # Set the date to the controller timezone.
+        date = date.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
 
         occupancy = self.advise_cfg["Advise"]["Occupancy"]
 
@@ -195,8 +199,8 @@ class DataManager:
 
         date_occupancy = np.array(occupancy[weekday])
 
-        start_date = date.replace(hour=0, minute=0, second=0)
-        end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
+        start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = start_date + datetime.timedelta(days=1)
         date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 
         # create nan filled dataframe and populate it
@@ -208,7 +212,7 @@ class DataManager:
             end = utils.combine_date_time(end, date)
             # if we are going into the next day.
             if end <= start and end.hour == 0 and end.minute == 0:
-                end = end.replace(day=end.day + 1)
+                end += datetime.timedelta(days=1)
             if occ is None or occ == "None":
                 raise Exception("Config Occupancy should have no None.")
             df_occupancy.loc[start:end, "occ"] = float(occ)
@@ -403,15 +407,18 @@ class DataManager:
 
         return pricing
 
-    def better_prices(self, date, freq="1T"):
+    def get_better_prices(self, date, freq="1T"):
         """
         Gets the prices from the building configuration file. Uses the provided date for which the prices should
         hold. Cannot have Nan values.
-        :param date: The date for which we want to get the prices from config. 
+        :param date: The date for which we want to get the prices from config. Timezone aware.
         :param freq: The frequency of time series. Default is one minute.
-        :return: pd.df columns="price" with time_series index for the date provided and in naive datetime as 
-            provided by the configuration file. 
+        :return: pd.df columns="price" with time_series index for the date provided and in timezone aware
+         datetime as provided by the configuration file. 
         """
+        # Set the date to the controller timezone.
+        date = date.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
+
         price_array = self.controller_cfg["Pricing"][self.controller_cfg["Pricing"]["Energy_Rates"]]
 
 
@@ -420,9 +427,11 @@ class DataManager:
             # (always says 0, problem unless energy its free and noone informed me)
             raise ValueError('SERVER MODE IS NOT YET IMPLEMENTED FOR ENERGY PRICING')
         else:
-            # Whether to get DR prices.
+            # Get DR Data and whether to get DR prices.
             DR_start_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Start"])
+            DR_start = datetime.datetime.combine(date, DR_start_time)
             DR_finish_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Finish"])
+            DR_finish = datetime.datetime.combine(date, DR_finish_time)
             DR_price = self.controller_cfg["Pricing"]["DR_Price"]
             is_DR = self.controller_cfg["Pricing"]["DR"]
 
@@ -434,8 +443,8 @@ class DataManager:
             date_prices = np.array(price_array[day_type])
 
             # The start and end day for the date for which to get prices.
-            start_date = date.replace(hour=0, minute=0, second=0)
-            end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
+            start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = start_date + datetime.timedelta(days=1)
             date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 
 
@@ -444,32 +453,80 @@ class DataManager:
 
             for interval_price in date_prices:
                 start, end, price = interval_price
-                price = float(price)
                 start = utils.combine_date_time(start, date)
                 end = utils.combine_date_time(end, date)
                 # if we are going into the next day.
                 if end <= start and end.hour == 0 and end.minute == 0:
-                    end = end.replace(day=end.day + 1)
+                    end += datetime.timedelta(days=1)
                 if price is None or price == "None":
                     raise Exception("Prices should have no None.")
-                df_prices.loc[start:end] = price
+                df_prices.loc[start:end] = float(price)
 
             # setting dr prices.
             if is_DR:
-                df_prices.loc[DR_start_time:DR_finish_time] = DR_price
+                if DR_price is None or DR_price == "None":
+                    raise Exception("DR Prices should have no None.")
+                df_prices.loc[DR_start:DR_finish] = float(DR_price)
+            df_prices = df_prices.astype(np.float)
 
-        return df_prices
+            return df_prices
+
+    def get_better_lambda(self, date, freq="1T"):
+        """
+        Gets the lambdas from the building configuration file. Uses the provided date for which the lambdas should
+        hold. Cannot have Nan values.
+        :param date: The date for which we want to get the data from config. Timezone aware.
+        :param freq: The frequency of time series. Default is one minute.
+        :return: pd.df columns="lambda" with time_series index for the date provided and in timezone aware
+         datetime as provided by the configuration file. 
+        """
+        # Set the date to the controller timezone.
+        date = date.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
+
+        # Get lambdas
+        general_lambda = self.advise_cfg["Advise"]["General_Lambda"]
+        dr_lambda = self.advise_cfg["Advise"]["DR_Lambda"]
+
+        # Get DR Data and whether to get DR prices.
+        DR_start_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Start"])
+        DR_start = datetime.datetime.combine(date, DR_start_time)
+        DR_finish_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Finish"])
+        DR_finish = datetime.datetime.combine(date, DR_finish_time)
+        is_DR = self.controller_cfg["Pricing"]["DR"]
+
+        # The start and end day for the date for which to get prices.
+        start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = start_date + datetime.timedelta(days=1)
+        date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
+
+        # create nan filled dataframe and then populate it
+        df_lambda = pd.DataFrame(columns=["lambda"], index=date_range)
+
+        if general_lambda is None or general_lambda == "None":
+            raise Exception("General Lambda should not be None.")
+
+        df_lambda.loc[start_date:end_date] = float(general_lambda)
+
+        # setting dr lambda.
+        if is_DR:
+            if dr_lambda is None or dr_lambda == "None":
+                raise Exception("DR Lambda should not be None if we have a DR event.")
+            df_lambda.loc[DR_start:DR_finish] = float(dr_lambda)
+
+        return df_lambda
 
 
-    def better_safety(self, date, freq="1T"):
+    def get_better_safety(self, date, freq="1T"):
         """
         Gets the safety_setpoints from the zone configuration file. Uses the provided date for which the setpoints should
         hold. Cannot have Nan values.
-        :param date: The date for which we want to get the safety setpoints from config. 
+        :param date: The date for which we want to get the safety setpoints from config. Timezone aware.
         :param freq: The frequency of time series. Default is one minute.
-        :return: pd.df columns=t_high, t_low with time_series index for the date provided and in naive datetime as 
-            provided by the configuration file. 
+        :return: pd.df columns=t_high, t_low with time_series index for the date provided and in timezone aware
+         datetime as provided by the configuration file. 
         """
+        # Set the date to the controller timezone.
+        date = date.astimezone(tz=pytz.timezone(self.pytz_timezone))
 
         setpoints_array = self.advise_cfg["Advise"]["SafetySetpoints"]
 
@@ -477,8 +534,8 @@ class DataManager:
 
         date_setpoints = np.array(setpoints_array[weekday])
 
-        start_date = date.replace(hour=0, minute=0, second=0)
-        end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
+        start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = start_date + datetime.timedelta(days=1)
         date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 
         # create nan filled dataframe and populate it
@@ -490,7 +547,7 @@ class DataManager:
             end = utils.combine_date_time(end, date)
             # if we are going into the next day.
             if end <= start and end.hour == 0 and end.minute == 0:
-                end = end.replace(day=end.day + 1)
+                end += datetime.timedelta(days=1)
             if t_low is None or t_high is None or t_low == "None" or t_high == "None":
                 raise Exception("Safety should have no None.")
             else:
@@ -501,26 +558,28 @@ class DataManager:
 
         return df_setpoints
 
-    def better_comfortband(self, date, freq="1T"):
+    def get_better_comfortband(self, date, freq="1T"):
         """
         Gets the comfortband from the zone configuration file. Uses the provided date for which the comfortband should
         hold. If there are nan's in the comfortband, then those will be replaced with the saftysetpoints.
-        :param date: The date for which we want to get the comfortband from config. 
+        :param date: The date for which we want to get the comfortband from config. Timezone aware.
         :param freq: The frequency of time series. Default is one minute.
-        :return: pd.df columns=t_high, t_low with time_series index for the date provided and in naive datetime as 
-            provided by the configuration file. 
+        :return: pd.df columns=t_high, t_low with time_series index for the date provided and in timezone aware
+         datetime as provided by the configuration file. 
         """
+        # Set the date to the controller timezone.
+        date = date.astimezone(tz=pytz.timezone(self.pytz_timezone))
 
         setpoints_array = self.advise_cfg["Advise"]["Comfortband"]
-        df_safety = self.better_safety(date, freq)
+        df_safety = self.get_better_safety(date, freq)
 
         weekday = date.weekday()
 
 
         date_setpoints = np.array(setpoints_array[weekday])
 
-        start_date = date.replace(hour=0, minute=0, second=0)
-        end_date = date.replace(day=date.day + 1, hour=0, minute=0, second=0)
+        start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = start_date + datetime.timedelta(days=1)
         date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 
         # create nan filled dataframe and populate it
@@ -532,7 +591,7 @@ class DataManager:
             end = utils.combine_date_time(end, date)
             # if we are going into the next day.
             if end <= start and end.hour == 0 and end.minute == 0:
-                end = end.replace(day=end.day + 1)
+                end += datetime.timedelta(days=1)
             if t_low is None or t_high is None or t_low == "None" or t_high == "None":
                 interval_safety = df_safety[start:end]
                 df_setpoints[start:end] = interval_safety
@@ -614,8 +673,13 @@ if __name__ == '__main__':
 
     dm = DataManager(cfg, advise_cfg, client, "HVAC_Zone_Centralzone")
 
-    print "Weather Predictions:"
-    print dm.weather_fetch()
+    start = utils.get_utc_now()
+    end = start + datetime.timedelta(days=1)
+
+    print(dm.get_better_lambda(start))
+
+    # print "Weather Predictions:"
+    # print dm.weather_fetch()
     # print "Occupancy Data"
     # print dm.preprocess_occ()
     # print "Thermostat Setpoints:"

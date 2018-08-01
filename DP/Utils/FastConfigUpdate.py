@@ -56,7 +56,7 @@ for directory in all_dir[1]:
     # building_config["Pricing"]["DR"] = True
 
 
-    building_config["Server"] = True
+    building_config["Server"] = False
 
     # write to config
     with open(building_config_name, 'wb') as f:

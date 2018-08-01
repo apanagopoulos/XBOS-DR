@@ -1,7 +1,6 @@
 import numpy as np
 from gurobipy import *
 
-from Occupation import Occupation
 
 
 class LinearZones:
@@ -20,7 +19,6 @@ class LinearZones:
         :param peak_cost: The cost at which the peak consumption is priced. 
         """
         self.price_buy = price_buy  # look at DP EnergyConsumption.py
-        self.price_sell = price_sell  # set to zero for now since we won't sell energy in the US.
         self.max_power_heating = max_power_heating  # TODO Marco. And we are not having same power for cooling and heating.
         self.max_power_cooling = max_power_cooling  # TODO Note changed logic in script for this. maxCooling when action is negative and vice versa.
         self.num_zones = num_zones

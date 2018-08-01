@@ -269,8 +269,8 @@ def getData(building, zone, date):
 		ground_truth_setpoints_df = datamanager.thermostat_setpoints(start_utc, end_utc)[zone] # from archiver
 		ground_truth_setpoints_df.index = ground_truth_setpoints_df.index.tz_convert(pst_pytz)
 
-		config_setpoints_df = datamanager.better_comfortband(start)
-		safety_setpoints_df = datamanager.better_safety(start)
+		config_setpoints_df = datamanager.get_better_comfortband(start)
+		safety_setpoints_df = datamanager.get_better_safety(start)
 
 		config_setpoints = config_setpoints_df[["t_low", "t_high"]].values
 		safety_setpoints = safety_setpoints_df[["t_low", "t_high"]].values
@@ -309,7 +309,7 @@ def getData(building, zone, date):
 		discomfortManager = Discomfort(setpoints=config_setpoints)
 
 		# get occupancies
-		occupancy_config = datamanager.better_occupancy_config(start)
+		occupancy_config = datamanager.get_better_occupancy_config(start)
 		try:
 			 occupancy_ground = datamanager.occupancy_archiver(start=start, end=end)
 		except:
@@ -335,7 +335,7 @@ def getData(building, zone, date):
 
 
 		# get consumption and cost and prices
-		prices = datamanager.better_prices(start).values
+		prices = datamanager.get_better_prices(start).values
 		heating_consumption = zone_cfg["Advise"]["Heating_Consumption"]
 		cooling_consumption = zone_cfg["Advise"]["Cooling_Consumption"]
 
