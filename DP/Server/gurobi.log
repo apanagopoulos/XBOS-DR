@@ -1,0 +1,232 @@
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 16:38:56 2018
+
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 16:43:35 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 16:44:15 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 16:45:12 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 16:45:42 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 16:46:02 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:40:19 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:41:09 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:42:42 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:43:30 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:44:15 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:44:24 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:45:56 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:46:09 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:48:19 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:48:59 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:50:11 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:51:28 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:52:15 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:53:30 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:54:17 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:54:56 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:55:42 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 17:57:26 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 18:09:51 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 18:10:20 2018
+
+Academic license - for non-commercial use only
+Optimize a model with 124 rows, 128 columns and 260 nonzeros
+Coefficient statistics:
+  Matrix range     [1e-01, 1e+00]
+  Objective range  [2e-02, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [4e+00, 8e+01]
+Presolve removed 0 rows and 12 columns
+Presolve time: 0.01s
+
+Solved in 0 iterations and 0.01 seconds
+Infeasible or unbounded model
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 18:11:04 2018
+
+Academic license - for non-commercial use only
+Optimize a model with 124 rows, 128 columns and 260 nonzeros
+Coefficient statistics:
+  Matrix range     [1e-01, 1e+00]
+  Objective range  [2e-02, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [4e+00, 8e+01]
+Presolve removed 0 rows and 12 columns
+Presolve time: 0.00s
+
+Solved in 0 iterations and 0.00 seconds
+Infeasible or unbounded model
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 19:23:04 2018
+
+Academic license - for non-commercial use only
+Optimize a model with 124 rows, 120 columns and 260 nonzeros
+Coefficient statistics:
+  Matrix range     [1e-01, 1e+00]
+  Objective range  [2e-02, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [4e+00, 8e+01]
+Presolve removed 0 rows and 4 columns
+Presolve time: 0.00s
+
+Solved in 0 iterations and 0.00 seconds
+Infeasible or unbounded model
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 19:24:04 2018
+
+Academic license - for non-commercial use only
+Optimize a model with 124 rows, 120 columns and 260 nonzeros
+Coefficient statistics:
+  Matrix range     [1e-01, 1e+00]
+  Objective range  [2e-02, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [4e+00, 8e+01]
+Presolve removed 96 rows and 68 columns
+Presolve time: 0.01s
+Presolved: 28 rows, 52 columns, 100 nonzeros
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    1.1474403e+02   3.689500e-01   0.000000e+00      0s
+      28    1.1672066e+02   0.000000e+00   0.000000e+00      0s
+
+Solved in 28 iterations and 0.02 seconds
+Optimal objective  1.167206640e+02
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 19:27:15 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Wed Aug  1 19:27:36 2018
+
+Academic license - for non-commercial use only
+Optimize a model with 252 rows, 248 columns and 548 nonzeros
+Coefficient statistics:
+  Matrix range     [1e-01, 1e+00]
+  Objective range  [2e-02, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [4e+00, 8e+01]
+Presolve removed 188 rows and 112 columns
+Presolve time: 0.01s
+Presolved: 64 rows, 136 columns, 384 nonzeros
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    1.9475030e+02   9.697500e-01   0.000000e+00      0s
+      62    2.0816833e+02   0.000000e+00   0.000000e+00      0s
+
+Solved in 62 iterations and 0.03 seconds
+Optimal objective  2.081683280e+02
+
+Gurobi 8.0.1 (mac64, Python) logging started Thu Aug  2 00:00:56 2018
+
+Academic license - for non-commercial use only
+
+Gurobi 8.0.1 (mac64, Python) logging started Thu Aug  2 00:02:31 2018
+
+Academic license - for non-commercial use only
+Optimize a model with 252 rows, 248 columns and 548 nonzeros
+Coefficient statistics:
+  Matrix range     [1e-01, 1e+00]
+  Objective range  [4e-03, 6e-01]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [4e+00, 8e+01]
+Presolve removed 204 rows and 160 columns
+Presolve time: 0.01s
+Presolved: 48 rows, 88 columns, 216 nonzeros
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    8.9429635e+01   6.036500e-01   0.000000e+00      0s
+      40    9.5968800e+01   0.000000e+00   0.000000e+00      0s
+
+Solved in 40 iterations and 0.01 seconds
+Optimal objective  9.596880000e+01
+
+Gurobi 8.0.1 (mac64, Python) logging started Thu Aug  2 00:53:44 2018
+
+Academic license - for non-commercial use only
+Optimize a model with 252 rows, 248 columns and 548 nonzeros
+Coefficient statistics:
+  Matrix range     [1e-01, 1e+00]
+  Objective range  [1e-03, 6e-01]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [4e+00, 8e+01]
+Presolve removed 224 rows and 180 columns
+Presolve time: 0.01s
+Presolved: 28 rows, 68 columns, 208 nonzeros
+
+Iteration    Objective       Primal Inf.    Dual Inf.      Time
+       0    6.4583340e+01   5.019500e-01   0.000000e+00      0s
+      24    7.0269000e+01   0.000000e+00   0.000000e+00      0s
+
+Solved in 24 iterations and 0.01 seconds
+Optimal objective  7.026900000e+01
