@@ -23,7 +23,7 @@ thermostat_query = """SELECT ?zone ?uri FROM  %s WHERE {
 
 #Preset of some actions
 COOLING_ACTION = {"heating_setpoint": 65, "cooling_setpoint": 68, "override": True, "mode": 3}
-HEATING_ACTION = {"heating_setpoint": 80, "cooling_setpoint": 95, "override": True, "mode": 3}
+HEATING_ACTION = {"heating_setpoint": 75, "cooling_setpoint": 80, "override": True, "mode": 3}
 NO_ACTION = {"heating_setpoint": 66, "cooling_setpoint": 73, "override": True, "mode": 3}
 PROGRAMMABLE = {"override": False}
 
@@ -60,9 +60,18 @@ def printTstat(tstat):
 #              "avenal-animal-shelter", "avenal-movie-theatre", "avenal-public-works-yard",
 #              "avenal-recreation-center", "berkeley-corporate-yard"]
 
-buildings = ["orinda-community-center"]
+buildings = ["jesse-turner-center"]
 
+berkeley_timezone = pytz.timezone("America/Los_Angeles")
+now = datetime.datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(berkeley_timezone)
+end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 
+print(now)
+print(end)
+
+wait_seconds = (end - now).seconds
+print("Waiting for %f seconds." % wait_seconds)
+time.sleep((end - now).seconds)
 
 # Getting clients
 client = get_client()
@@ -85,8 +94,8 @@ for BUILDING in buildings:
 
     ##### RUN
     for zone, tstat in tstats.items():
-        if zone == "HVAC_Zone_AC-4":
-            writeTstat(tstat, NO_ACTION)
+        if "Basketball" in zone:
+            # writeTstat(tstat, HEATING_ACTION)
             writeTstat(tstat, PROGRAMMABLE)
 
     # wait to let the setpoints get through

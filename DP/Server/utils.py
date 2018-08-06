@@ -279,7 +279,7 @@ def get_data(building=None, client=None, cfg=None, start=None, end=None, days_ba
     except:
         if client is None:
             client = choose_client(cfg)
-        dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
+        dataManager = ThermalDataManager(cfg, client)
         thermal_data = dataManager.thermal_data(start=start, end=end, evaluate_preprocess=evaluate_preprocess)
         with open(path, "wb") as f:
             import pickle
@@ -321,7 +321,7 @@ def get_raw_data(building=None, client=None, cfg=None, start=None, end=None, day
     except:
         if client is None:
             client = get_client()
-        dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
+        dataManager = ThermalDataManager(cfg, client)
 
         inside_data = dataManager._get_inside_data(start, end)
         outside_data = dataManager._get_outside_data(start, end)

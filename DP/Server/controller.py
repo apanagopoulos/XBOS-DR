@@ -449,14 +449,14 @@ class ZoneThread(threading.Thread):
                     # go into normal schedule
                     normal_schedule = NormalSchedule(cfg, self.tstats[self.zone], advise_cfg)
 
-                    # TODO ADD THREAD BARRIER.
+                    # TODO ADD THREAD BARRIER the normal schedule if it needs it for simulation or other stuff.
                     normal_schedule_succeeded, action_data = normal_schedule.normal_schedule(
                         debug=self.debug)  # , simulate=simulate)
                     # Log this action.
                     if normal_schedule_succeeded:
                         MPCLogger.mpc_log(building, self.zone, utc_now, float(cfg["Interval_Length"]), is_mpc=False,
                                           is_schedule=True,
-                                          expansion=2, shut_down_system=False)
+                                          expansion=advise_cfg["Advise"]["Baseline_Dr_Extend_Percent"], shut_down_system=False)
                     else:
                         # If normal schedule fails then we have big problems.
 
@@ -545,7 +545,7 @@ if __name__ == '__main__':
     # only single stage cooling buildings get to retrive data. otherwise takes too long.
     # if building in ["north-berkeley-senior-center", "ciee", "avenal-veterans-hall", "orinda-community-center",
     #                 "avenal-recreation-center", "word-of-faith-cc", "jesse-turner-center", "berkeley-corporate-yard"]:
-    if building != "south-berkeley-senior-center":
+    if building != "jesse-turner-center":
         thermal_data = utils.get_data(cfg=cfg, client=client, days_back=150, force_reload=False)
 
         zone_thermal_models = {}
@@ -568,7 +568,8 @@ if __name__ == '__main__':
     # TODO most likely through datamanager or some sort of input. Get current temperatures for simulation
     curr_temperatures_simulation = {zone: dict_tstat.temperature for zone, dict_tstat in tstats.items()}
 
-    simulate = True
+    # TODO change simulate
+    simulate = False
 
     # Getting the simulateTstats
     simulate_tstats = {}
@@ -599,7 +600,7 @@ if __name__ == '__main__':
         # TODO only because we want to only run on the basketball courts.
         if building != "jesse-turner-center" or "Basketball" in zone:
             thread = ZoneThread(yaml_filename, mpc_tstats, zone, client, zone_thermal_models[zone],
-                                cfg["Building"], thread_barrier, debug=True, simulate=simulate,
+                                cfg["Building"], thread_barrier, debug=False, simulate=simulate,
                                 simulate_start=simulate_start, simulate_end=simulate_end)
             thread.start()
             threads.append(thread)
