@@ -1,22 +1,28 @@
 import datetime
-import os
 import sys
 
 import networkx as nx
 import numpy as np
+import os
+import pandas as pd
 import plotly.offline as py
 import pytz
-import yaml
 
 sys.path.insert(0, '../')
 import utils
 from utils import plotly_figure
 
+from ConsumptionStorage import ConsumptionStorage
 from Discomfort import Discomfort
 from EnergyConsumption import EnergyConsumption
 from Occupancy import Occupancy
 from Safety import Safety
 from DP.Server.MPC.ThermalModels.ThermalModel import ThermalModel
+
+
+# TODO Demand charges right now assume constant demand charge throughout interval. should be easy to extend
+# TODO but need to keep in mind that we need to then store the cost of demand charge and not the consumption
+# TODO in the graph, since we actually only want to minimize cost and not consumption.
 
 
 class Node:
@@ -42,16 +48,18 @@ class Node:
 
 
 class EVA:
-    def __init__(self, current_time, balance_lambda, pred_window, interval, discomfort,
-                 thermal, occupancy, safety, energy, zones, root=Node([75], 0), noZones=1, debug=False):
+    def __init__(self, start, balance_lambda, end, interval, discomfort,
+                 thermal, occupancy, safety, energy, zones, consumption_storage=None,
+                 root=Node([75], 0), noZones=1, debug=False):
         """
         Constructor of the Evaluation Class
         The EVA class contains the shortest path algorithm and its utility functions
         Parameters
         ----------
-        current_time : datetime.datetime
+        start : datetime.datetime. In local timezone of zone.
         l : float (0 - 1)
-        pred_window : int
+        end : datetime.datetime. In local timezone of zone.
+                                This time is where the leaf nodes will be which will all have None values.
         interval : int
         discomfort : Discomfort
         thermal : ThermalModel
@@ -60,6 +68,8 @@ class EVA:
         energy : EnergyConsumption
         root : Node
         noZones : int
+        consumption_storage: If None we don't care for demand charges, otherwise provide the consumptionStorage class
+                            with filled in building and tentative zone consumption.
         debug: Mainly tells us whether to store the thermal_model_type of the predictions in each node.
         """
         # initialize class constants
@@ -67,12 +77,12 @@ class EVA:
         self.zones = zones
 
         self.noZones = noZones
-        self.current_time = current_time
+        self.start = start
+        self.end = end
         self.balance_lambda = balance_lambda
         self.g = nx.DiGraph()  # [TODO:Changed to MultiDiGraph... FIX print]
         self.interval = interval
         self.root = root
-        self.target = self.get_real_time(pred_window * interval)
 
         self.billing_period = 30 * 24 * 60 / interval  # 30 days
 
@@ -83,6 +93,8 @@ class EVA:
         self.energy = energy
 
         self.g.add_node(root, usage_cost=np.inf, best_action=None, best_successor=None)
+
+        self.consumption_storage = consumption_storage
 
         self.debug = debug
 
@@ -97,7 +109,7 @@ class EVA:
         -------
         int
         """
-        return self.current_time + datetime.timedelta(minutes=node_time)
+        return self.start + datetime.timedelta(minutes=node_time)
 
     # the shortest path algorithm
     def shortest_path(self, from_node):
@@ -110,8 +122,9 @@ class EVA:
         """
 
         # add the final nodes when algorithm goes past the target prediction time
-        if self.get_real_time(from_node.time) >= self.target:
-            self.g.add_node(from_node, usage_cost=0, best_action=None, best_successor=None, discomfort=[None], consumption=[None])
+        if self.get_real_time(from_node.time) >= self.end:
+            self.g.add_node(from_node, usage_cost=0, best_action=None, best_successor=None, discomfort=[None],
+                            consumption=[None], max_consumption=0)
             return
 
         # create the action set (0 is for do nothing, 1 is for cooling, 2 is for heating)
@@ -125,22 +138,25 @@ class EVA:
             new_temperature = []
             if self.debug:
                 model_type = []
-            consumption = []
+            consumption_cost = []
+            zone_consumption = []
             for i in range(self.noZones):
                 # Note: we are assuming self.zones and self.temps are in right order.
                 # To get model types.
                 if self.debug:
                     temperatures, model_types = self.th.predict(t_in=from_node.temps[i],
-                                                       action=int(action[i]),
-                                                       time=self.get_real_time(from_node.time).hour, debug=True)
+                                                                action=int(action[i]),
+                                                                time=self.get_real_time(from_node.time).hour,
+                                                                debug=True)
                     model_type.append(model_types[0])  # index because self.th.predict returns array.
                 else:
                     temperatures = self.th.predict(t_in=from_node.temps[i],
-                                                       action=int(action[i]),
-                                                       time=self.get_real_time(from_node.time).hour, debug=False)
+                                                   action=int(action[i]),
+                                                   time=self.get_real_time(from_node.time).hour, debug=False)
 
                 new_temperature.append(temperatures[0])  # index because self.th.predict returns array.
-                consumption.append(self.energy.calc_cost(action[i], from_node.time / self.interval))
+                consumption_cost.append(self.energy.calc_cost(action[i], from_node.time / self.interval))
+                zone_consumption.append(self.energy.get_consumption(action, interval=self.interval))
 
             # create the node that describes the predicted data
             new_node = Node(
@@ -163,11 +179,34 @@ class EVA:
             # create node if the new node is not already in graph
             # recursively run shortest path for the new node
             if new_node not in self.g:
-                self.g.add_node(new_node, usage_cost=np.inf, best_action=None, best_successor=None, discomfort=[None], consumption=[None])
+                self.g.add_node(new_node, usage_cost=np.inf, best_action=None, best_successor=None, discomfort=[None],
+                                consumption_cost=[None], max_consumption=None)
                 self.shortest_path(new_node)
 
-            # need to find a way to get the consumption and discomfort values between [0,1]
-            interval_overall_cost = ((1 - self.balance_lambda) * (sum(consumption))) + (self.balance_lambda * (sum(discomfort)))
+            if self.consumption_storage is not None:
+                # Get current interval consumption
+                # Get the consumption for the rest of the building
+                rest_building_consumption = self.consumption_storage.get_rest_of_building_consumption(self.zones,
+                                                                                                      self.get_real_time(
+                                                                                                          from_node.time))
+                current_interval_consumption = rest_building_consumption + sum(zone_consumption)
+
+                # get max interval consumption for the path taken by the new_node
+                future_max_interval_consumption = self.g.node[new_node]["max_consumption"]
+
+                # find which consumption has been highest
+                max_interval_consumption = max(future_max_interval_consumption, current_interval_consumption)
+            else:
+                max_interval_consumption = None
+
+            # need to find a way to get the consumption_cost and discomfort values between [0,1]
+            # TODO Fix the lambda for demand charges and multiply by cost per interval.
+            interval_overall_cost = ((1 - self.balance_lambda) * (sum(consumption_cost))) + (
+                self.balance_lambda * (sum(discomfort)))
+
+            # If we care for demand charges
+            if self.consumption_storage is not None:
+                interval_overall_cost =+ (1 - self.balance_lambda) * max_interval_consumption
 
             this_path_cost = self.g.node[new_node]['usage_cost'] + interval_overall_cost
 
@@ -184,7 +223,8 @@ class EVA:
                     continue
                 '''
                 self.g.add_node(from_node, best_action=action, best_successor=new_node, usage_cost=this_path_cost,
-                                discomfort=discomfort, consumption=consumption)
+                                discomfort=discomfort, consumption_cost=consumption_cost,
+                                max_consumption=max_interval_consumption)
 
     def reconstruct_path(self, graph=None):
         """
@@ -212,22 +252,50 @@ class EVA:
 
 class Advise:
     # the Advise class initializes all the Models and runs the shortest path algorithm
-    def __init__(self, zones, current_time, occupancy_data, zone_temperature, thermal_model,
+    def __init__(self, zones, start, occupancy_data, zone_temperature, thermal_model,
                  prices, lamda, dr_lamda, dr, interval, predictions_hours, heating_cons, cooling_cons,
                  vent_cons,
-                 thermal_precision, occ_obs_len_addition, setpoints, sensors, safety_constraints, debug=False):
+                 thermal_precision, occ_obs_len_addition, setpoints, sensors, safety_constraints, consumption_storage=None,
+                 debug=False):
+        """
+        
+        :param zones: 
+        :param start: datetime timezone aware. In the local timezone of the zone.
+        :param occupancy_data: 
+        :param zone_temperature: 
+        :param thermal_model: 
+        :param prices: 
+        :param lamda: 
+        :param dr_lamda: 
+        :param dr: 
+        :param interval: 
+        :param predictions_hours: 
+        :param heating_cons: 
+        :param cooling_cons: 
+        :param vent_cons: 
+        :param thermal_precision: 
+        :param occ_obs_len_addition: 
+        :param setpoints: 
+        :param sensors: 
+        :param safety_constraints: 
+        :param consumption_storage:
+        :param debug: 
+        """
         # TODO do something with dr_lambda and vent const (they are added since they are in the config file.)
         # TODO Also, thermal_precision
-        self.current_time = current_time
+        # set the time variables.
+        self.start = start
+        self.end = start + datetime.timedelta(hours=predictions_hours)
+        self.interval = interval
 
         # initialize all models
-        disc = Discomfort(setpoints, now=self.current_time)
+        disc = Discomfort(setpoints, now=self.start)
 
         occ = Occupancy(occupancy_data, interval, predictions_hours, occ_obs_len_addition, sensors)
         self.occ_predictions = occ.predictions
         safety = Safety(safety_constraints, noZones=1)
-        energy = EnergyConsumption(prices, interval, now=self.current_time,
-                                   heat=heating_cons, cool=cooling_cons)
+        self.energy = EnergyConsumption(prices, interval, now=self.start,
+                                        heat=heating_cons, cool=cooling_cons)
 
         Zones_Starting_Temps = zone_temperature
 
@@ -240,17 +308,18 @@ class Advise:
 
         # initialize the shortest path model
         self.advise_unit = EVA(
-            current_time=self.current_time,
+            start=self.start,
             balance_lambda=temp_l,
-            pred_window=predictions_hours * 60 / interval,
+            end=self.end,
             interval=interval,
             discomfort=disc,
             thermal=thermal_model,
             occupancy=occ,
             safety=safety,
-            energy=energy,
+            energy=self.energy,
             root=self.root,
             zones=zones,
+            consumption_storage=consumption_storage,
             debug=debug
         )
 
@@ -267,6 +336,16 @@ class Advise:
         action = self.advise_unit.g.node[self.root][
             "best_action"]  # self.advise_unit.g[path[0]][path[1]]['action'] [TODO Is this Fix correct?]
         return action
+
+    def get_consumption(self):
+        """
+        Gets the consumption of the shortest path.
+        :return: pd.df with timeseries index.
+        """
+        consumption_list = [self.energy.get_consumption(
+            self.graph.node[self.path[i]]['best_action']) for i in range(len(self.path))]
+        date_range = pd.date_range(start=self.start, end=self.end, freq=str(self.interval) + "T")
+        return pd.Series(data=consumption_list, index=date_range)
 
     def g_plot(self, zone):
 
@@ -288,7 +367,6 @@ if __name__ == '__main__':
     import Debugger
     from DataManager import DataManager
 
-    from xbos import get_client
     from MPC.ThermalModels.MPCThermalModel import MPCThermalModel
 
     import time
@@ -299,8 +377,6 @@ if __name__ == '__main__':
     else:
         building, zone = "avenal-veterans-hall", "HVAC_Zone_AC-4"
 
-
-
     # naive_now = datetime.datetime.strptime("2018-06-22 15:20:44", "%Y-%m-%d %H:%M:%S")
     # now =  pytz.timezone("UTC").localize(naive_now)
     now = utils.get_utc_now()
@@ -309,7 +385,7 @@ if __name__ == '__main__':
     # read from config file
     cfg = utils.get_config(building)
 
-    client = utils.choose_client() # not for server use here.
+    client = utils.choose_client()  # not for server use here.
 
     # --- Thermal Model Init ------------
     # initialize and fit thermal model
@@ -318,9 +394,10 @@ if __name__ == '__main__':
 
     # TODO INTERVAL SHOULD NOT BE IN config_file.yml, THERE SHOULD BE A DIFFERENT INTERVAL FOR EACH ZONE
     # TODO, NOTE, We are training on the whole building.
-    zone_thermal_models = {thermal_zone: MPCThermalModel(zone, zone_data[zone_data['dt'] == 5], interval_length=cfg["Interval_Length"],
-                                                 thermal_precision=0.05)
-                           for thermal_zone, zone_data in all_data.items()}
+    zone_thermal_models = {
+        thermal_zone: MPCThermalModel(zone, zone_data[zone_data['dt'] == 5], interval_length=cfg["Interval_Length"],
+                                      thermal_precision=0.05)
+        for thermal_zone, zone_data in all_data.items()}
     print("Trained Thermal Model")
     # --------------------------------------
 
@@ -331,17 +408,28 @@ if __name__ == '__main__':
     prices = dataManager.prices()
     building_setpoints = dataManager.building_setpoints()
 
+    pred_horizon = 4
+    start = now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"]))
+    end = start + datetime.timedelta(hours=pred_horizon)
+
+    # set consumption storage for demand charges
+    consumption_timeseries = pd.date_range(start, end, freq=str(cfg["Interval_Length"]) + "T")
+    consumption_data = np.ones(consumption_timeseries.shape) * 20
+    building_consumption = pd.Series(data=consumption_data, index=consumption_timeseries)
+    consumption_storage = ConsumptionStorage(building, num_threads=1, building_consumption=building_consumption)
+
     temperature = 65
     DR = False
 
     # set outside temperatures and zone temperatures for each zone.
     for thermal_zone, zone_thermal_model in zone_thermal_models.items():
-        zone_thermal_model.set_weather_predictions([70] * 24)
-        zone_thermal_model.set_temperatures_and_fit({temp_thermal_zone: 70 for temp_thermal_zone in zone_thermal_models.keys()})
+        # hack. should be dictionary but just giving temperatures for all hours of the day.
+        zone_thermal_model.set_outside_temperature([70] * 24)
+        zone_thermal_model.set_temperatures({temp_thermal_zone: 70 for temp_thermal_zone in zone_thermal_models.keys()})
 
     adv = Advise([zone],  # array because we might use more than one zone. Multiclass approach.
                  now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"])),
-                 dataManager.preprocess_occ(),
+                 dataManager.preprocess_occ_cfg(),
                  [temperature],
                  zone_thermal_models[zone],
                  prices,
@@ -349,7 +437,7 @@ if __name__ == '__main__':
                  advise_cfg["Advise"]["DR_Lambda"],
                  DR,
                  cfg["Interval_Length"],
-                 advise_cfg["Advise"]["MPCPredictiveHorizon"],
+                 pred_horizon, # The predictive horizon
                  advise_cfg["Advise"]["Heating_Consumption"],
                  advise_cfg["Advise"]["Cooling_Consumption"],
                  advise_cfg["Advise"]["Ventilation_Consumption"],
@@ -358,13 +446,15 @@ if __name__ == '__main__':
                  building_setpoints,
                  advise_cfg["Advise"]["Occupancy_Sensors"],
                  safety_constraints,
+                 consumption_storage=consumption_storage,
                  debug=True)
 
     adv_start = time.time()
     adv.advise()
+    print(adv.get_consumption())
     adv_end = time.time()
+    print("TIME: %f" % (adv_end - adv_start))
     path_length = len(adv.path)
-    print([adv.advise_unit.g[adv.path[i]][adv.path[i + 1]]['model_type'] for i in range(path_length - 1)])
+    print([adv.advise_unit.g.node[adv.path[i]]['max_consumption'] for i in range(path_length)])
     Debugger.debug_print(now, building, zone, adv, safety_constraints, prices, building_setpoints, adv_end - adv_start, file=False)
-    adv.g_plot(zone)
-
+    # adv.g_plot(zone)
