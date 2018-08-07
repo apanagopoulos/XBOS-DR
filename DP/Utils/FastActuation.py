@@ -10,6 +10,9 @@ import traceback
 import pytz
 import yaml
 
+sys.path.append("../Server")
+import utils
+
 
 #Tstat Brick query (Fixed for missing relationships)
 thermostat_query = """SELECT ?zone ?uri FROM  %s WHERE {
@@ -65,6 +68,9 @@ buildings = ["jesse-turner-center"]
 
 BUILDING = "jesse-turner-center"
 
+cfg_building = utils.get_config(BUILDING)
+
+
 # if end < now:
 #     wait_seconds = 0
 # else:
@@ -73,7 +79,7 @@ BUILDING = "jesse-turner-center"
 # time.sleep(wait_seconds)
 
 # Getting clients
-client = get_client()
+client = utils.choose_client(cfg_building)
 hc = HodClient("xbos/hod", client)
 
 print("================================================")

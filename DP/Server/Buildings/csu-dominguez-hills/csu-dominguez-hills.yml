@@ -26,5 +26,5 @@ Pricing:
     - ['21:00', '00:00', 0.04187]
   - - ['00:00', '00:00', 0.04187]
 Pytz_Timezone: America/Los_Angeles
-Server: false
+Server: true
 Thermal_Precision: 0.05
