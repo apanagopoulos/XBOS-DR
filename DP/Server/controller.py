@@ -600,7 +600,7 @@ if __name__ == '__main__':
         # TODO only because we want to only run on the basketball courts.
         if building != "jesse-turner-center" or "Basketball" in zone:
             thread = ZoneThread(yaml_filename, mpc_tstats, zone, client, zone_thermal_models[zone],
-                                cfg["Building"], thread_barrier, debug=False, simulate=simulate,
+                                cfg["Building"], thread_barrier, debug=True, simulate=simulate,
                                 simulate_start=simulate_start, simulate_end=simulate_end)
             thread.start()
             threads.append(thread)

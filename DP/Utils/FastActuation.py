@@ -23,7 +23,7 @@ thermostat_query = """SELECT ?zone ?uri FROM  %s WHERE {
 
 #Preset of some actions
 COOLING_ACTION = {"heating_setpoint": 65, "cooling_setpoint": 68, "override": True, "mode": 3}
-HEATING_ACTION = {"heating_setpoint": 75, "cooling_setpoint": 80, "override": True, "mode": 3}
+HEATING_ACTION = {"heating_setpoint": 70, "cooling_setpoint": 75, "override": True, "mode": 3}
 NO_ACTION = {"heating_setpoint": 66, "cooling_setpoint": 73, "override": True, "mode": 3}
 PROGRAMMABLE = {"override": False}
 
@@ -39,6 +39,7 @@ def printTstat(tstat):
         print("heating setpoint", tstat.heating_setpoint)
         print("cooling setpoint", tstat.cooling_setpoint)
         print("temperature", tstat.temperature)
+        print("action", tstat.state)
         print("override", tstat.override)
     except:
         print("WARNING: for tstat %s the setpoints could not be read" % tstat)
@@ -69,9 +70,12 @@ end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 print(now)
 print(end)
 
-wait_seconds = (end - now).seconds
+if end < now:
+    wait_seconds = 0
+else:
+    wait_seconds = (end - now).seconds
 print("Waiting for %f seconds." % wait_seconds)
-time.sleep((end - now).seconds)
+time.sleep(wait_seconds)
 
 # Getting clients
 client = get_client()
@@ -84,7 +88,7 @@ for BUILDING in buildings:
     print("")
 
     query_data = hc.do_query(thermostat_query % BUILDING)["Rows"]
-    query_data = [x for x in query_data if x["?zone"]!="HVAC_Zone_Please_Delete_Me"] #TODO CHANGE THE PLEASE DELETE ME ZONE CHECK WHEN FIXED
+    query_data = [x for x in query_data if x["?zone"]!="HVAC_Zone_Please_Delete_Me"] #TODO CHANGE THE PLEASE 1DELETE ME ZONE CHECK WHEN FIXED
 
     try:
         tstats = {d["?zone"]: Thermostat(client, d["?uri"]) for d in query_data}
@@ -95,6 +99,7 @@ for BUILDING in buildings:
     ##### RUN
     for zone, tstat in tstats.items():
         if "Basketball" in zone:
+            # pass
             # writeTstat(tstat, HEATING_ACTION)
             writeTstat(tstat, PROGRAMMABLE)
 

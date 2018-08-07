@@ -3,8 +3,67 @@ import datetime
 # Linear program solver.
 import gurobipy
 import numpy as np
+import threading
 
-import utilsLinear
+import utils
+
+class AdviseLinearProgram:
+    def __init__(self, building, num_threads=None, debug=False):
+        self.building = building
+        self.zones = utils.get_zones(building)
+        self.debug = debug
+
+        if num_threads is None:
+            num_threads = len(self.zones)
+        # Initialize the barrier to wait for all zones to get together
+        self.barrier = utils.Barrier(num_threads)
+        # Get mutex to block other threads from running
+        self.mutex = threading.Semaphore(1)
+
+        # initalize all temperatures variable for the linear program. Will be reset after every run of linear program.
+        self.all_zone_temperatures = {}
+        # helper variable which will be used in start_linear_program function. If the run_linear_program has happened
+        # it will be set to True, and reset to False only for most of the duration of the run_linear_program
+        self.ran_linear_program = False
+
+        # shared variable to get the data of the last linear_program_optimization
+        self.last_linear_program_optimization_data = None
+
+    def run_linear_program(self, start, end, zones, zone_starting_temperatures):
+        # Actions to perform berfore linear program optimization
+        self.mutex.acquire()
+        self.ran_linear_program = False
+        # all zones will now populate the all_temperatures variable at once.
+        for zone in zones:
+            self.all_zone_temperatures[zone] = zone_starting_temperatures[zone]
+        self.mutex.release()
+
+        self.barrier.wait()
+
+
+
+        # Only one zone will get to run the linear program
+        self.mutex.acquire()
+        if not self.ran_linear_program:
+            linear_program = LinearProgram(building=self.building, start=start, end=end,
+                                           starting_zone_temperatures= self.all_zone_temperatures,
+                                           debug=self.debug)
+            # TODO following functions should be called in optimize i guess?
+            linear_program.set_inside_temperature()
+            linear_program.set_discomfort()
+            linear_program.set_objective_function()
+            linear_program.lp_solver.optimize()
+            # TODO set shared linear program variable accordingly.
+            for v in lp.lp_solver.getVars():
+                print(v.varName, v.x)
+            self.ran_linear_program = True
+        self.mutex.release()
+
+
+
+
+
+
 
 
 class LinearProgram:
@@ -22,9 +81,9 @@ class LinearProgram:
 
         # set control variables.
         self.building = building
-        self.zones = utilsLinear.get_zones(building)
-        self.building_cfg = utilsLinear.get_config(building)
-        self.zone_advise = {zone: utilsLinear.get_zone_config(building, zone) for zone in self.zones}
+        self.zones = utils.get_zones(building)
+        self.building_cfg = utils.get_config(building)
+        self.zone_advise = {zone: utils.get_zone_config(building, zone) for zone in self.zones}
         self.interval = float(self.building_cfg["Interval_Length"])  # in minutes
         self.start = start
         self.end = end
@@ -34,11 +93,11 @@ class LinearProgram:
         # TODO The util functions have end inclusive, but that gives too many intervals.
         # set all data matrices besides thermal model.
         # All are {zone: pd.df with respective columns but same timeseries}
-        self.lambda_cost_discomfort = utilsLinear.get_lambda_matrix(self.building, self.start, self.end, self.interval)
-        self.occupancy = utilsLinear.get_occupancy_matrix(self.building, self.start, self.end, self.interval)
-        self.comfortband = utilsLinear.get_comfortband_matrix(self.building, self.start, self.end, self.interval)
+        self.lambda_cost_discomfort = utils.get_lambda_matrix(self.building, self.start, self.end, self.interval)
+        self.occupancy = utils.get_occupancy_matrix(self.building, self.start, self.end, self.interval)
+        self.comfortband = utils.get_comfortband_matrix(self.building, self.start, self.end, self.interval)
         # TODO add Safety contraints to the linear program. Simply add them in the temperature variables for LP.
-        self.prices = utilsLinear.get_price_matrix(self.building, self.start, self.end, self.interval)
+        self.prices = utils.get_price_matrix(self.building, self.start, self.end, self.interval)
         # TODO Add outside temperatures. For now we will work with a constant thermal model.
 
         # Two stage should be somewhat easy to extend to by allowing a higher power. Depends on 2 stage logic though.
