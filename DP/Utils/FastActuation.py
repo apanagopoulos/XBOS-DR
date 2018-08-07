@@ -165,7 +165,7 @@ while run_program:
         wait_time = (start - now).seconds
     if wait_time > (end - now).seconds and end > now:
         wait_time = (end - now).seconds
-    if not actuate and start < now:
+    if not actuate and start < now and not actuated_once:
         wait_time = 0
     if actuate and end < now:
         wait_time = 0
