@@ -10,8 +10,7 @@ import traceback
 import pytz
 import yaml
 
-
-#Tstat Brick query (Fixed for missing relationships)
+# Tstat Brick query (Fixed for missing relationships)
 thermostat_query = """SELECT ?zone ?uri FROM  %s WHERE {
           ?tstat rdf:type brick:Thermostat .
           ?tstat bf:controls ?RTU .
@@ -21,19 +20,29 @@ thermostat_query = """SELECT ?zone ?uri FROM  %s WHERE {
           ?tstat bf:uri ?uri.
           };"""
 
-#Preset of some actions
+room_type_query = """
+    SELECT ?room ?label ?zone FROM %s WHERE {
+        ?room rdf:type brick:Room.
+	    ?room rdf:label ?label.
+  		?room bf:isPartOf ?zone.
+  		?zone rdf:type brick:HVAC_Zone
+	};"""
+
+# Preset of some actions
 COOLING_ACTION = {"heating_setpoint": 65, "cooling_setpoint": 68, "override": True, "mode": 3}
 HEATING_ACTION = {"heating_setpoint": 70, "cooling_setpoint": 75, "override": True, "mode": 3}
 NO_ACTION = {"heating_setpoint": 66, "cooling_setpoint": 73, "override": True, "mode": 3}
 PROGRAMMABLE = {"override": False}
 
-#Setter
-def writeTstat(tstat, action):
-  print("Action we are writing", action)
-  print("Tstat uri", tstat._uri)
-  tstat.write(action)
 
-#Getter 
+# Setter
+def writeTstat(tstat, action):
+    print("Action we are writing", action)
+    print("Tstat uri", tstat._uri)
+    tstat.write(action)
+
+
+# Getter
 def printTstat(tstat):
     try:
         print("heating setpoint", tstat.heating_setpoint)
@@ -47,7 +56,7 @@ def printTstat(tstat):
 
 ######################################################################## Main Script:
 
-#Buildings to be affected
+# Buildings to be affected
 # buildings = ["avenal-animal-shelter", "avenal-veterans-hall", "avenal-movie-theatre", "avenal-public-works-yard", "avenal-recreation-center", "orinda-community-center", "north-berkeley-senior-center", "south-berkeley-senior-center"]
 # buildings = ["csu-dominguez-hills"]
 # buildings = ["south-berkeley-senior-center",
@@ -63,7 +72,7 @@ def printTstat(tstat):
 
 buildings = ["jesse-turner-center"]
 
-BUILDING = "jesse-turner-center"
+BUILDING = "csu-dominguez-hills"
 
 # if end < now:
 #     wait_seconds = 0
@@ -85,31 +94,47 @@ query_data = hc.do_query(thermostat_query % BUILDING)["Rows"]
 query_data = [x for x in query_data if
               x["?zone"] != "HVAC_Zone_Please_Delete_Me"]  # TODO CHANGE THE PLEASE DELETE ME ZONE CHECK WHEN FIXED
 
+room_types = hc.do_query(room_type_query % BUILDING)["Rows"]
+zone_contain_classroom = {}
+for row in room_types:
+    curr_zone = row["?zone"]
+    # hardcoding a fix. this is how we get zones from tstats....
+    curr_zone = curr_zone[:13] + "_" + curr_zone[14:]
+    curr_zone = curr_zone.upper()
+
+    if curr_zone not in zone_contain_classroom:
+        zone_contain_classroom[curr_zone] = False
+    if "\"" in row["?label"]:
+        zone_contain_classroom[curr_zone] = True
+
+print(zone_contain_classroom)
+
 try:
-    tstats = {d["?zone"]: Thermostat(client, d["?uri"]) for d in query_data}
+    temp_tstats = {d["?zone"]: Thermostat(client, d["?uri"]) for d in query_data}
 except:
     raise Exception("Warning: Unable to get Thermostat. Aborting this building.")
 
+tstats = {}
+for iter_zone, iter_tstat in temp_tstats.items():
+    curr_zone = iter_zone
+    curr_zone = curr_zone[:13] + "_" + curr_zone[14:]
+    curr_zone = curr_zone.upper()
+    tstats[curr_zone] = iter_tstat
+
+print(tstats)
 
 berkeley_timezone = pytz.timezone("America/Los_Angeles")
-
 now = datetime.datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(berkeley_timezone)
-
 start = now.replace(hour=14, minute=0, second=0, microsecond=0)
 end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 
-# start = now.replace(hour=13, minute=47, second=0, microsecond=0)
-# end = now.replace(hour=13, minute=55, second=0, microsecond=0)
-
-actuated_once = False
-
 run_program = True
+debug = False
 while run_program:
     iteration_start = time.time()
 
-
     # set wether to actuate
-    actuate = (start <= now <= end) and (not actuated_once)
+    actuate = start <= now <= end
 
     print("=============================================")
     print("Acutation: %f with now to start: %f" % (int(actuate), (start - now).seconds))
@@ -117,37 +142,44 @@ while run_program:
     if actuate:
         ##### RUN
         for zone, tstat in tstats.items():
-            if "Basketball" in zone:
+            if not zone_contain_classroom[zone]:
+                print("\n ------------- ")
+                print("Writing for zone %s" % zone)
                 heating_setpoint = tstat.heating_setpoint
                 cooling_setpoint = tstat.cooling_setpoint
 
-                new_cooling_setpoint = 75
+                # only if cooling setpoint is less than 80 we do something
+                if cooling_setpoint < 80:
+                    new_cooling_setpoint = 4 + cooling_setpoint
 
-                # checking if heating setpoint is reasonable
-                if heating_setpoint > new_cooling_setpoint:
-                    new_heating_setpoint = 70
+                    action_to_write = {"heating_setpoint": heating_setpoint, "cooling_setpoint": new_cooling_setpoint,
+                                       "override": True, "mode": 3}
+                    print("We are writing the following action: ", action_to_write)
+                    if not debug:
+                        writeTstat(tstat, action_to_write)
                 else:
-                    new_heating_setpoint = heating_setpoint
-
-                action_to_write = {"heating_setpoint": new_heating_setpoint, "cooling_setpoint": new_cooling_setpoint,
-                                    "override": True, "mode": 3}
-                print("We are writing the following action: ", action_to_write)
-                writeTstat(tstat, action_to_write)
-
-        actuated_once = True
+                    print("No action to write for this zone because cooling setpoint is %f" % cooling_setpoint)
 
         # wait to let the setpoints get through
-        time.sleep(5)
+        time.sleep(30)
+
+        print("\n ++++++ Setting override to false so we can get the schedule from the buildings. ++++++")
+        # wait for a couple of seconds to let the setpoints get set and then set override to false
+        for zone, tstat in tstats.items():
+            if not zone_contain_classroom[zone]:
+                if not debug:
+                    writeTstat(tstat, PROGRAMMABLE)
+
+
 
     # Printing the data for every tstat
     for zone, tstat in tstats.items():
-      print("")
-      print("Checking zone:", zone)
-      print("Checking zone uri:", tstat._uri)
-      printTstat(tstat)
-      print("Done checking zone", zone)
-      print("")
-
+        print("")
+        print("Checking zone:", zone)
+        print("Checking zone uri:", tstat._uri)
+        printTstat(tstat)
+        print("Done checking zone", zone)
+        print("")
 
     WAIT_MINUTES = 15
 
@@ -174,19 +206,7 @@ while run_program:
 
     run_program = now < end
 
-print("ENDING PROGRAM")
-
 for zone, tstat in tstats.items():
-    if "Basketball" in zone:
-        writeTstat(tstat, PROGRAMMABLE)
-
-time.sleep(5)
-# Printing the data for every tstat
-for zone, tstat in tstats.items():
-    print("")
-    print("Checking zone:", zone)
-    print("Checking zone uri:", tstat._uri)
-    printTstat(tstat)
-    print("Done checking zone", zone)
-    print("")
-
+    if not zone_contain_classroom[zone]:
+        if not debug:
+            writeTstat(tstat, PROGRAMMABLE)

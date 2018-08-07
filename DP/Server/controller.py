@@ -343,9 +343,9 @@ class ZoneThread(threading.Thread):
         self.simulate = simulate
         if simulate:
             # Make them utc aware if they are not already.
-            self.simulate_start = simulate_start.replace(tzinfo=pytz.utc)
-            self.simulate_end = simulate_end.replace(tzinfo=pytz.utc)
-            self.simulate_now = self.simulate_start
+            self.simulate_start_utc = simulate_start.replace(tzinfo=pytz.utc)
+            self.simulate_end_utc = simulate_end.replace(tzinfo=pytz.utc)
+            self.simulate_now_utc = self.simulate_start_utc
 
     def run(self):
         """
@@ -357,8 +357,14 @@ class ZoneThread(threading.Thread):
 
         starttime = time.time()
         action_data = None
-        # Run if we are not simulating or if we are simulating, run it until the end is larger than then the now.
-        while not self.simulate or (self.simulate and self.simulate_end >= self.simulate_now):
+
+        # This is the variable that the controller will change to stop the loop to run the MPC/Normal Schedule
+        run_program = True
+
+        while run_program:
+
+        # # Run if we are not simulating or if we are simulating, run it until the end is larger than then the now.
+        # while not self.simulate or (self.simulate and self.simulate_end >= self.simulate_now):
 
             # Reloading the config every time we iterate.
             try:
@@ -373,13 +379,29 @@ class ZoneThread(threading.Thread):
                     "Building"] + "/ZoneConfigs/ folder."
                 return  # TODO MAKE THIS RUN NORMAL SCHEDULE SOMEHOW WHEN NO ZONE CONFIG EXISTS It will raise an error for now
 
+            # Getting timezone for the config
+            timezone_cfg = pytz.timezone(cfg_building["Pytz_Timezone"])
+
             # Setting now time.
             # The start of this loop is the now time for the process.
             if self.simulate:
-                now_utc = self.simulate_now
+                now_utc = self.simulate_now_utc
             else:
                 now_utc = utils.get_utc_now()
             now_cfg_timezone = now_utc.astimezone(tz=pytz.timezone(cfg_building["Pytz_Timezone"]))
+
+            # setting when the mpc/normal should start and end for actuation and simulation.
+            if self.simulate:
+                # TODO This should be replaced with getting this data from config files i feel like.
+                start_utc = self.simulate_start_utc
+                end_utc = self.simulate_end_utc
+
+            else:
+                # For now we will leave teh config file start and end times for the current day we are running
+                start_utc = 
+
+            start_cfg_timezone = start_utc.astimezone(tz=timezone_cfg)
+            end_cfg_timezone = end_utc.astimezone(tz=timezone_cfg)
 
             # check whether to actuate if there is no simulation happening.
             actuate = True

@@ -113,7 +113,8 @@ def combine_date_time(time, date):
     :param date: (datetime)
     :returns datetime with date from date and time from time. But with seconds as 0."""
     datetime_time = get_time_datetime(time)
-    return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0)
+    return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0, microseconds=0)
+    # return datetime.datetime.combine(date, datetime_time)
 
 
 def in_between_datetime(now, start, end):
