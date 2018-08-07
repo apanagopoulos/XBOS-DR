@@ -87,8 +87,13 @@ cfg_building = utils.get_config(BUILDING)
 # print("Waiting for %f seconds." % wait_seconds)
 # time.sleep(wait_seconds)
 
+debug = True
+
 # Getting clients
-client = utils.choose_client(cfg_building)
+if debug:
+    client = utils.choose_client()
+else:
+    client = utils.choose_client(cfg_building)
 hc = HodClient("xbos/hod", client)
 
 print("================================================")
@@ -137,9 +142,11 @@ end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 last_cooling_action_written = {}
 
 run_program = True
-debug = False
 while run_program:
     iteration_start = time.time()
+
+    if debug:
+        print(last_cooling_action_written)
 
     # set wether to actuate
     actuate = start <= now <= end
@@ -160,9 +167,11 @@ while run_program:
                 if zone in last_cooling_action_written:
                     last_written_cooling = last_cooling_action_written[zone]
                 else:
+                    last_cooling_action_written[zone] = None
                     last_written_cooling = None
 
                 if last_written_cooling != cooling_setpoint:
+                    last_cooling_action_written[zone] = None
                     last_written_cooling = None
 
                 # only if cooling setpoint is less than 80 we do something
@@ -182,7 +191,7 @@ while run_program:
         # wait to let the setpoints get through
         time.sleep(30)
 
-        print("\n ++++++ Setting override to false so we can get the schedule from the buildings. ++++++")
+        print("\n ++++++ Setting override to false so we can get the schedule from the buildings later. ++++++")
         # wait for a couple of seconds to let the setpoints get set and then set override to false
         for zone, tstat in tstats.items():
             if not zone_contain_classroom[zone]:
@@ -200,7 +209,7 @@ while run_program:
         print("Done checking zone", zone)
         print("")
 
-    WAIT_MINUTES = 15
+    WAIT_MINUTES = 1
 
     # wait for next iteration
     wait_time = WAIT_MINUTES * 60 - (time.time() - iteration_start)
