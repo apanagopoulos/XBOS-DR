@@ -141,12 +141,13 @@ end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 
 last_cooling_action_written = {}
 
+
 run_program = True
 while run_program:
     iteration_start = time.time()
 
     if debug:
-        print(last_cooling_action_written)
+        print("Last cooling actions", last_cooling_action_written)
 
     # set wether to actuate
     actuate = start <= now <= end
@@ -186,7 +187,11 @@ while run_program:
 
                     last_cooling_action_written[zone] = new_cooling_setpoint
                 else:
-                    print("No action to write for this zone because cooling setpoint is %f" % cooling_setpoint)
+                    if last_written_cooling is None:
+                        float_last_written_cooling = -1
+                    else:
+                        float_last_written_cooling = last_written_cooling
+                    print("No action to write for this zone because cooling setpoint is %f while the last written setpoint is %f" % (cooling_setpoint, float_last_written_cooling))
 
         # wait to let the setpoints get through
         time.sleep(30)
