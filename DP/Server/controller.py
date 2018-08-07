@@ -306,7 +306,7 @@ def hvac_control(cfg, advise_cfg, tstats, client, thermal_model, zone, building,
 
 
 class ZoneThread(threading.Thread):
-    def __init__(self, cfg_filename, tstats, zone, client, thermal_model, building, thread_barrier, debug=False,
+    def __init__(self, cfg_filename, tstats, zone, client, thermal_model, building, barrier, debug=False,
                  simulate=False, simulate_start=None, simulate_end=None):
         """
         
@@ -316,7 +316,7 @@ class ZoneThread(threading.Thread):
         :param client: 
         :param thermal_model: 
         :param building: 
-        :param thread_barrier: threading barrier
+        :param barrier: threading barrier. Needs to be shared by threads. 
         :param debug: Whether to actuate tstats.
         :param simulate: Bool whether to simulate.
         :param simualate_start: (utc datetime) When the simulation should start
@@ -330,7 +330,7 @@ class ZoneThread(threading.Thread):
         self.building = building
         self.thermal_model = thermal_model
         self.debug = debug
-        self.thread_barrier = thread_barrier
+        self.barrier = barrier
         self.simulation_results = {"inside": {},
                                    "outside": {},
                                    "heating_setpoint": {},
@@ -359,32 +359,35 @@ class ZoneThread(threading.Thread):
         action_data = None
         # Run if we are not simulating or if we are simulating, run it until the end is larger than then the now.
         while not self.simulate or (self.simulate and self.simulate_end >= self.simulate_now):
+
+            # Reloading the config every time we iterate.
             try:
-                # Reloading the config everytime we iterate.
-                with open(self.cfg_filename, 'r') as ymlfile:
-                    cfg = yaml.load(ymlfile)
-                with open("Buildings/" + cfg["Building"] + "/ZoneConfigs/" + self.zone + ".yml", 'r') as ymlfile:
-                    advise_cfg = yaml.load(ymlfile)
+                cfg_building = utils.get_config(self.building)
+                cfg_zone = utils.get_zone_config(self.building, self.zone)
+                # TODO uncomment once we shifted to multiple zones for one thread.
+                # cfg_zone = {}
+                # for iter_zone in self.zones:
+                #     cfg_zone[iter_zone] = utils.get_zone_config(self.building, iter_zone)
             except:
-                print "There is no " + self.zone + ".yml file under Buildings/" + cfg[
+                print "There is no " + self.zone + ".yml file under Buildings/" + cfg_building[
                     "Building"] + "/ZoneConfigs/ folder."
-                return  # TODO MAKE THIS RUN NORMAL SCHEDULE SOMEHOW WHEN NO ZONE CONFIG EXISTS
+                return  # TODO MAKE THIS RUN NORMAL SCHEDULE SOMEHOW WHEN NO ZONE CONFIG EXISTS It will raise an error for now
 
             # Setting now time.
             # The start of this loop is the now time for the process.
             if self.simulate:
-                utc_now = self.simulate_now
+                now_utc = self.simulate_now
             else:
-                utc_now = utils.get_utc_now()
-            cfg_timezone_now = utc_now.astimezone(tz=pytz.timezone(cfg["Pytz_Timezone"]))
+                now_utc = utils.get_utc_now()
+            now_cfg_timezone = now_utc.astimezone(tz=pytz.timezone(cfg_building["Pytz_Timezone"]))
 
             # check whether to actuate if there is no simulation happening.
             actuate = True
             # TODO have actuate/simulate flag to know what to do. For now, if simulate is true, we will simulate.
-            if advise_cfg["Advise"]["Actuate"] and not self.simulate:
-                start = advise_cfg["Advise"]["Actuate_Start"]
-                end = advise_cfg["Advise"]["Actuate_End"]
-                cfg_now_time = cfg_timezone_now.time()
+            if cfg_zone["Advise"]["Actuate"] and not self.simulate:
+                start = cfg_zone["Advise"]["Actuate_Start"]
+                end = cfg_zone["Advise"]["Actuate_End"]
+                cfg_now_time = now_cfg_timezone.time()
                 if utils.in_between(now=cfg_now_time, start=utils.get_time_datetime(start),
                                     end=utils.get_time_datetime(end)):
                     actuate = True
@@ -393,53 +396,53 @@ class ZoneThread(threading.Thread):
                     utils.set_override_false(self.tstats[self.zone])
                     actuate = False
             elif not self.simulate:
-                print("WARNING: We are not actuating this zone today. Zone %s is ending." % self.zone)
+                print("We are done with the simulation. Zone %s is ending." % self.zone)
                 return
 
             # actuate the lights script during the DR event.
             # should happen only once. Hence, one zone is responsible for actuating it.
-            # TODO Fix actuate lights with simulation.
-            if advise_cfg["Actuate_Lights"] and not self.simulate:
-                dr_start = cfg["Pricing"]["DR_Start"]
-                dr_end = cfg["Pricing"]["DR_Finish"]
-                cfg_now_time = cfg_timezone_now.time()
+            # TODO Fix actuate lights with simulation. and also make sure to only make the lights run from one zone.
+            if cfg_zone["Actuate_Lights"] and not self.simulate:
+                dr_start = cfg_building["Pricing"]["DR_Start"]
+                dr_end = cfg_building["Pricing"]["DR_Finish"]
+                cfg_now_time = now_cfg_timezone.time()
                 if utils.in_between(now=cfg_now_time, start=utils.get_time_datetime(dr_start),
                                     end=utils.get_time_datetime(dr_end)):
                     print("NOTE: Running the lights script from zone %s." % zone)
-                    lights.lights(building=cfg["Building"], client=self.client, actuate=True)
+                    lights.lights(building=cfg_building["Building"], client=self.client, actuate=True)
                     # Overriding the lights.
-                    advise_cfg["Actuate_Lights"] = False
-                    with open("Buildings/" + cfg["Building"] + "/ZoneConfigs/" + self.zone + ".yml", 'wb') as ymlfile:
-                        yaml.dump(advise_cfg, ymlfile)
+                    cfg_zone["Actuate_Lights"] = False
+                    with open("Buildings/" + cfg_building["Building"] + "/ZoneConfigs/" + self.zone + ".yml", 'wb') as ymlfile:
+                        yaml.dump(cfg_zone, ymlfile)
 
             # TODO MASSIVE. FIND DR LAMBDA AND EXPANSION THAT WILL BE USED FOR THE LOGGER.
             if actuate:
                 print("Note: Actuating zone %s." % self.zone)
 
                 # Flag whether to run normal schedule. If not, then run MPC.
-                go_to_normal_schedule = not advise_cfg["Advise"]["MPC"]
+                go_to_normal_schedule = not cfg_zone["Advise"]["MPC"]
 
                 # Running the MPC if possible.
                 if not go_to_normal_schedule:
-                    # Run MPC. Try up to advise_cfg["Advise"]["Thermostat_Write_Tries"] to find and write action.
+                    # Run MPC. Try up to cfg_zone["Advise"]["Thermostat_Write_Tries"] to find and write action.
                     count = 0
                     succeeded = False
                     while not succeeded and not go_to_normal_schedule:
-                        succeeded, action_data = hvac_control(cfg, advise_cfg, self.tstats, self.client,
+                        succeeded, action_data = hvac_control(cfg_building, cfg_zone, self.tstats, self.client,
                                                               self.thermal_model,
-                                                              self.zone, self.building, utc_now,
+                                                              self.zone, self.building, now_utc,
                                                               debug=self.debug, simulate=self.simulate)
 
                         # Increment the counter and set the flag for the normal schedule if the MPC failed too often.
                         if not succeeded:
                             time.sleep(10)
-                            if count == advise_cfg["Advise"]["Thermostat_Write_Tries"]:
+                            if count == cfg_zone["Advise"]["Thermostat_Write_Tries"]:
                                 print("Problem with MPC, entering normal schedule.")
                                 go_to_normal_schedule = True
                             count += 1
                     # Log this action if succeeded.
                     if succeeded:
-                        MPCLogger.mpc_log(building, self.zone, utc_now, float(cfg["Interval_Length"]), is_mpc=True,
+                        MPCLogger.mpc_log(building, self.zone, now_utc, float(cfg_building["Interval_Length"]), is_mpc=True,
                                           is_schedule=False,
                                           mpc_lambda=0.995, shut_down_system=False)
                         # TODO Add note in LOGGER that MPC DIDN"T WORK HERE
@@ -447,16 +450,16 @@ class ZoneThread(threading.Thread):
                 # Running the normal Schedule
                 if go_to_normal_schedule:
                     # go into normal schedule
-                    normal_schedule = NormalSchedule(cfg, self.tstats[self.zone], advise_cfg)
+                    normal_schedule = NormalSchedule(cfg_building, self.tstats[self.zone], cfg_zone)
 
                     # TODO ADD THREAD BARRIER the normal schedule if it needs it for simulation or other stuff.
                     normal_schedule_succeeded, action_data = normal_schedule.normal_schedule(
                         debug=self.debug)  # , simulate=simulate)
                     # Log this action.
                     if normal_schedule_succeeded:
-                        MPCLogger.mpc_log(building, self.zone, utc_now, float(cfg["Interval_Length"]), is_mpc=False,
+                        MPCLogger.mpc_log(building, self.zone, now_utc, float(cfg_building["Interval_Length"]), is_mpc=False,
                                           is_schedule=True,
-                                          expansion=advise_cfg["Advise"]["Baseline_Dr_Extend_Percent"], shut_down_system=False)
+                                          expansion=cfg_zone["Advise"]["Baseline_Dr_Extend_Percent"], shut_down_system=False)
                     else:
                         # If normal schedule fails then we have big problems.
 
@@ -464,7 +467,7 @@ class ZoneThread(threading.Thread):
                         utils.set_override_false(tstat)
 
                         # Logging the shutdown.
-                        MPCLogger.mpc_log(self.building, self.zone, utc_now, float(cfg["Interval_Length"]),
+                        MPCLogger.mpc_log(self.building, self.zone, now_utc, float(cfg_building["Interval_Length"]),
                                           is_mpc=False, is_schedule=False, shut_down_system=True,
                                           system_shut_down_msg="Normal Schedule Failed")
 
@@ -473,12 +476,12 @@ class ZoneThread(threading.Thread):
                         return
 
             print(
-            "This process is for building %s" % cfg["Building"])  # TODO Rethink. now every thread will write this.
+            "This process is for building %s" % cfg_building["Building"])  # TODO Rethink. now every thread will write this.
             # Wait for the next interval if not simulating.
             if not self.simulate:
                 print datetime.datetime.now()
-                time.sleep(60. * float(cfg["Interval_Length"]) - (
-                    (time.time() - starttime) % (60. * float(cfg["Interval_Length"]))))
+                time.sleep(60. * float(cfg_building["Interval_Length"]) - (
+                    (time.time() - starttime) % (60. * float(cfg_building["Interval_Length"]))))
             # else, increment the now parameter we have.
             # AND ADVANCE TEMPERATURE OF TSTATS.
             # AND STORE THE SIMULATION RESULTS
@@ -496,13 +499,13 @@ class ZoneThread(threading.Thread):
                 self.simulation_results["state"][str(utc_unix_timestamp)] = self.thermal_model.last_action
 
                 print(self.simulate_now)
-                self.simulate_now += datetime.timedelta(minutes=cfg["Interval_Length"])
+                self.simulate_now += datetime.timedelta(minutes=cfg_building["Interval_Length"])
                 # advancing the temperatures of each zone. each thread is responsible for this.
                 # waiting for all threads to advance their temperatures before proceeding.
                 new_temperature, noise = self.tstats[self.zone].next_temperature(debug=self.debug)
                 if self.debug:
                     self.simulation_results["noise"][str(utc_unix_timestamp)] = noise
-                thread_barrier.wait()
+                self.barrier.wait()
 
             # Checking if manual setpoint changes occurred.
             if actuate and not self.simulate:
@@ -513,7 +516,7 @@ class ZoneThread(threading.Thread):
                     utils.set_override_false(tstat)
 
                     # Tell the logger to record this setpoint change.
-                    MPCLogger.mpc_log(self.building, self.zone, utils.get_utc_now(), float(cfg["Interval_Length"]),
+                    MPCLogger.mpc_log(self.building, self.zone, utils.get_utc_now(), float(cfg_building["Interval_Length"]),
                                       is_mpc=False, is_schedule=False, shut_down_system=True,
                                       system_shut_down_msg="Manual Setpoint Change")
 
@@ -531,13 +534,13 @@ if __name__ == '__main__':
     except:
         sys.exit("Please specify the configuration file as: python2 controller.py config_file.yaml")
 
-    cfg = utils.get_config(building)
+    cfg_building = utils.get_config(building)
 
     client = utils.choose_client()  # TODO add config
 
     hc = HodClient("xbos/hod", client)
 
-    tstats = utils.get_thermostats(client, hc, cfg["Building"])
+    tstats = utils.get_thermostats(client, hc, cfg_building["Building"])
 
     # --- Thermal Model Init ------------
     # initialize and fit thermal model
@@ -546,7 +549,7 @@ if __name__ == '__main__':
     # if building in ["north-berkeley-senior-center", "ciee", "avenal-veterans-hall", "orinda-community-center",
     #                 "avenal-recreation-center", "word-of-faith-cc", "jesse-turner-center", "berkeley-corporate-yard"]:
     if building != "jesse-turner-center":
-        thermal_data = utils.get_data(cfg=cfg, client=client, days_back=150, force_reload=False)
+        thermal_data = utils.get_data(cfg=cfg_building, client=client, days_back=150, force_reload=False)
 
         zone_thermal_models = {}
         for zone, zone_data in thermal_data.items():
@@ -600,7 +603,7 @@ if __name__ == '__main__':
         # TODO only because we want to only run on the basketball courts.
         if building != "jesse-turner-center" or "Basketball" in zone:
             thread = ZoneThread(yaml_filename, mpc_tstats, zone, client, zone_thermal_models[zone],
-                                cfg["Building"], thread_barrier, debug=True, simulate=simulate,
+                                cfg_building["Building"], thread_barrier, debug=True, simulate=simulate,
                                 simulate_start=simulate_start, simulate_end=simulate_end)
             thread.start()
             threads.append(thread)

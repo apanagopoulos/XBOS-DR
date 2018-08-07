@@ -189,8 +189,7 @@ def get_config(building):
         with open(config_path, "r") as f:
             cfg = yaml.load(f)
     except:
-        print("ERROR: No config file for building %s with path %s" % (building, config_path))
-        return
+        raise Exception("ERROR: No config file for building %s with path %s" % (building, config_path))
     return cfg
 
 
@@ -200,12 +199,12 @@ def get_zone_config(building, zone):
         with open(config_path, "r") as f:
             cfg = yaml.load(f)
     except:
-        print("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, config_path))
-        return
+        raise Exception("ERROR: No config file for building %s and zone % s with path %s" % (building, zone, config_path))
     return cfg
 
 
 def get_zone_log(building, zone):
+    # TODO Fix this function.
     log_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + "Logs/" + zone + ".log"
 
     ## fix for one lines
