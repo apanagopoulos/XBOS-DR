@@ -87,7 +87,7 @@ cfg_building = utils.get_config(BUILDING)
 # print("Waiting for %f seconds." % wait_seconds)
 # time.sleep(wait_seconds)
 
-debug = True
+debug = False
 
 # Getting clients
 if debug:
