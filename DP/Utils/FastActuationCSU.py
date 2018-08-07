@@ -134,6 +134,8 @@ now = datetime.datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(berkeley_ti
 start = now.replace(hour=14, minute=0, second=0, microsecond=0)
 end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 
+last_cooling_action_written = {}
+
 run_program = True
 debug = False
 while run_program:
@@ -154,8 +156,17 @@ while run_program:
                 heating_setpoint = tstat.heating_setpoint
                 cooling_setpoint = tstat.cooling_setpoint
 
+                # basically want to see if we can modify the setpoints.
+                if zone in last_cooling_action_written:
+                    last_written_cooling = last_cooling_action_written[zone]
+                else:
+                    last_written_cooling = None
+
+                if last_written_cooling != cooling_setpoint:
+                    last_written_cooling = None
+
                 # only if cooling setpoint is less than 80 we do something
-                if cooling_setpoint < 80:
+                if cooling_setpoint < 80 and last_written_cooling is None:
                     new_cooling_setpoint = 4 + cooling_setpoint
 
                     action_to_write = {"heating_setpoint": heating_setpoint, "cooling_setpoint": new_cooling_setpoint,
@@ -163,6 +174,8 @@ while run_program:
                     print("We are writing the following action: ", action_to_write)
                     if not debug:
                         writeTstat(tstat, action_to_write)
+
+                    last_cooling_action_written[zone] = new_cooling_setpoint
                 else:
                     print("No action to write for this zone because cooling setpoint is %f" % cooling_setpoint)
 
