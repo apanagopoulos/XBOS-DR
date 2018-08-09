@@ -109,7 +109,7 @@ end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 
 actuated_once = False
 
-run_program = False
+run_program = True
 while run_program:
     iteration_start = time.time()
 
