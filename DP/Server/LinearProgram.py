@@ -55,7 +55,7 @@ class AdviseLinearProgram:
         # shared variable to get the data of the last linear_program_optimization
         self.last_lp_data = defaultdict(lambda: defaultdict(dict))
 
-    def advise(self, start, end, zones, cfg_building, cfg_zones, thermal_model,
+    def advise(self, start, end, zones, cfg_building, cfg_zones, thermal_models,
                     zone_starting_temperatures, consumption_storage):
 
         # TODO fix end How are we gonna work with end and start here ? Just get the longest interval or what
@@ -74,7 +74,14 @@ class AdviseLinearProgram:
             self.all_zone_temperatures[zone] = zone_starting_temperatures[zone]
         self.mutex.release()
 
+        # waiting for all zones to finish updating temperatures
         self.barrier.wait()
+
+        # For thermal model need to set weather predictions for every loop and set current zone temperatures.
+        for zone, zone_thermal_model in thermal_models.items():
+            zone_thermal_model.set_temperatures(self.all_zone_temperatures)
+            # FIX OUTSIDE DATA
+            zone_thermal_model.set_outside_temperature(None)
 
         # Only one zone will get to run the linear program
         self.mutex.acquire()

@@ -68,7 +68,7 @@ class SimulationTstat:
         self.time_step += 1
 
         # TODO fix the outside temperature. This is not quiet right since the dictinary need not be in order.
-        curr_outside_temperature = self.mpc_thermal_model.outside_temperature.values()[0]
+        curr_outside_temperature = 70  # self.mpc_thermal_model.outside_temperature.values()[0]
         next_temperature = self.mpc_thermal_model.predict(self.temperature, action,
                                                           outside_temperature=curr_outside_temperature, debug=False)[0]
         noise = np.random.normal(gaussian_mean, gaussian_std)

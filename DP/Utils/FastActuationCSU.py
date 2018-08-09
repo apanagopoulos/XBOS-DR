@@ -158,7 +158,8 @@ while run_program:
     if actuate:
         ##### RUN
         for zone, tstat in tstats.items():
-            if not zone_contain_classroom[zone]:
+            # if not zone_contain_classroom[zone]:
+            if True:
                 print("\n ------------- ")
                 print("Writing for zone %s" % zone)
                 heating_setpoint = tstat.heating_setpoint
@@ -199,7 +200,8 @@ while run_program:
         print("\n ++++++ Setting override to false so we can get the schedule from the buildings later. ++++++")
         # wait for a couple of seconds to let the setpoints get set and then set override to false
         for zone, tstat in tstats.items():
-            if not zone_contain_classroom[zone]:
+            # if not zone_contain_classroom[zone]:
+            if True:
                 if not debug:
                     writeTstat(tstat, PROGRAMMABLE)
 
@@ -240,6 +242,7 @@ while run_program:
     run_program = now < end
 
 for zone, tstat in tstats.items():
-    if not zone_contain_classroom[zone]:
+    # if not zone_contain_classroom[zone]:
+    if True:
         if not debug:
             writeTstat(tstat, PROGRAMMABLE)
