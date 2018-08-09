@@ -20,7 +20,10 @@ import sys
 import ThermalDataManager
 import DataManager
 
-sys.path.append("./Lights")
+
+SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(__file__)  # this is true for now
+
+sys.path.append(SERVER_DIR_PATH + "/Lights")
 import lights
 
 try:
