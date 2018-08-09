@@ -79,7 +79,7 @@ cfg_building = utils.get_config(BUILDING)
 # time.sleep(wait_seconds)
 
 # Getting clients
-client = utils.choose_client()
+client = utils.choose_client(cfg_building)
 hc = HodClient("xbos/hod", client)
 
 print("================================================")
