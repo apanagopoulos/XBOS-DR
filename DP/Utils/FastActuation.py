@@ -79,7 +79,7 @@ cfg_building = utils.get_config(BUILDING)
 # time.sleep(wait_seconds)
 
 # Getting clients
-client = utils.choose_client(cfg_building)
+client = utils.choose_client()
 hc = HodClient("xbos/hod", client)
 
 print("================================================")
@@ -109,7 +109,7 @@ end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 
 actuated_once = False
 
-run_program = True
+run_program = False
 while run_program:
     iteration_start = time.time()
 

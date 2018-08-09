@@ -1,4 +1,6 @@
-# this is the plotter for the MPC graph
+# This is a file which provides either functions which simplify use or provide better abstraction in case
+# something changes in config files etc.
+
 
 import datetime
 import os
@@ -11,10 +13,15 @@ import pytz
 import yaml
 from xbos import get_client
 from xbos.devices.thermostat import Thermostat
+import sys
 
 # be careful of circular import.
 # https://stackoverflow.com/questions/11698530/two-python-modules-require-each-others-contents-can-that-work
-from ThermalDataManager import ThermalDataManager
+import ThermalDataManager
+import DataManager
+
+sys.path.append("./Lights")
+import lights
 
 try:
     import pygraphviz
@@ -113,7 +120,7 @@ def combine_date_time(time, date):
     :param date: (datetime)
     :returns datetime with date from date and time from time. But with seconds as 0."""
     datetime_time = get_time_datetime(time)
-    return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0, microseconds=0)
+    return date.replace(hour=datetime_time.hour, minute=datetime_time.minute, second=0, microsecond=0)
     # return datetime.datetime.combine(date, datetime_time)
 
 
@@ -153,6 +160,13 @@ def get_mdal_datetime_to_string(date_object):
     return date_object.strftime('%Y-%m-%d %H:%M:%S') + ' UTC'
 
 
+def get_datetime_to_string(date_object):
+    """Gets string from datetime object.
+    :param date_object
+    :returns '%Y-%m-%d %H:%M:%S' """
+    return date_object.strftime('%Y-%m-%d %H:%M:%S')
+
+
 # ============ DATA FUNCTIONS ============
 
 def round_increment(data, precision=0.05):
@@ -174,6 +188,31 @@ def is_heating(action_data):
     """Returns boolen area of actions which were heating (either two or single stage).
     :param action_data: np.array or pd.series"""
     return (action_data == HEATING_ACTION) | (action_data == TWO_STAGE_HEATING_ACTION)
+
+def is_DR(now, cfg_building):
+    """
+    Whether we are in a DR timeperiod while having the DR flag set.
+    :param now: datetime timezone aware.
+    :param cfg_building: The config file for the building.
+    :return: Bool. Whether in DR region.
+    """
+    now_cfg_timezone = now.astimezone(tz=get_config_timezone(cfg_building))
+
+    dr_start = cfg_building["Pricing"]["DR_Start"]
+    dr_end = cfg_building["Pricing"]["DR_Finish"]
+    cfg_now_time = now_cfg_timezone.time()
+    is_inbetween = in_between(now=cfg_now_time, start=get_time_datetime(dr_start),
+                        end=get_time_datetime(dr_end))
+    is_dr_day = cfg_building["Pricing"]["DR"]
+    return is_dr_day and is_inbetween
+
+def get_config_timezone(cfg_building):
+    """
+    Gets the timezone object for the building.
+    :param cfg_building: The config file of the whole building.
+    :return: Pytz object. 
+    """
+    return pytz.timezone(cfg_building["Pytz_Timezone"])
 
 
 def choose_client(cfg=None):
@@ -279,7 +318,7 @@ def get_data(building=None, client=None, cfg=None, start=None, end=None, days_ba
     except:
         if client is None:
             client = choose_client(cfg)
-        dataManager = ThermalDataManager(cfg, client)
+        dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
         thermal_data = dataManager.thermal_data(start=start, end=end, evaluate_preprocess=evaluate_preprocess)
         with open(path, "wb") as f:
             import pickle
@@ -321,7 +360,7 @@ def get_raw_data(building=None, client=None, cfg=None, start=None, end=None, day
     except:
         if client is None:
             client = get_client()
-        dataManager = ThermalDataManager(cfg, client)
+        dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
 
         inside_data = dataManager._get_inside_data(start, end)
         outside_data = dataManager._get_outside_data(start, end)
@@ -434,22 +473,29 @@ def as_pandas(result):
     df = df.set_index('Time')
     return df
 
-# TODO Finsih this up once i have more energy. Make it return a dataframe.
-def get_outside_temperatures(building_config, start, end, data_manager, thermal_data_manager):
+
+# TODO Finsih this up once i have more energy. Make it return a dataframe. I am not happy with this because
+# we are first downsampling the historic data and then interpolating again. Just overall needs an overhaul,
+# but for now it will suffice to implement simulations and linear program.
+def get_outside_temperatures(building_config, zone_config, start, end, data_manager, thermal_data_manager, interval=15):
     """
     Get outside weather from start to end. Will combine historic and weather predictions data when necessary.
     :param start: datetime timezone aware
     :param end: datetime timezone aware
-    :return: {int hour: float temperature}
+    :param interval: (int minutes) interval of the returned timeseries in minutes. 
+    :return: pd.Series with combined data of historic and prediction outside weather. 
     """
     # we might have that the given now is before the actual current time
     # hence need to get historic data and combine with weather predictions.
+
+    # TODO Need to fix how we get the end from the weather_fetch method. So for now we need to restrict our end time.
+    end = start + datetime.timedelta(hours=zone_config["Advise"]["MPCPredictiveHorizon"])
 
     # For finding out if start or/and end are before or after the current time.
     utc_now = get_utc_now()
 
     # Set start and end to correct timezones
-    cfg_timezone = pytz.timezone(building_config["Pytz_Timezone"])
+    cfg_timezone = get_config_timezone(building_config)
     start_utc = start.astimezone(tz=pytz.utc)
     end_utc = end.astimezone(tz=pytz.utc)
     start_cfg_timezone = start.astimezone(tz=cfg_timezone)
@@ -502,7 +548,7 @@ def get_outside_temperatures(building_config, start, end, data_manager, thermal_
     # Combining historic data with outside_temperatures correctly if exists.
     if historic_start_utc is not None:
         historic_weather = thermal_data_manager._get_outside_data(historic_start_utc,
-                                                                  historic_start_utc, inclusive=True)
+                                                                  historic_end_utc, inclusive=True)
         historic_weather = thermal_data_manager._preprocess_outside_data(historic_weather.values())
 
         # Down sample the historic weather to hourly entries, and take the mean for each hour.
@@ -548,6 +594,24 @@ def get_outside_temperatures(building_config, start, end, data_manager, thermal_
             else:
                 outside_temperatures[row_time.hour] = float(t_out)
 
+
+    # The following takes the dictionary and returns a pd.Series with timeseries indexing from start to end in cfg timezone and
+    # frequency given by the interval parameter with interpolation of the data.
+    series_data = []
+    timeseries_index = pd.date_range(start_cfg_timezone, end_cfg_timezone, freq='60T')
+    # To get outside temperature data in the right order.
+    for iter_time in timeseries_index:
+        series_data.append(outside_temperatures[iter_time.hour])
+
+    outside_temperatures_series = pd.Series(data=series_data, index=timeseries_index)
+
+    #https: // stackoverflow.com / questions / 47148446 / pandas - resample - interpolate - is -producing - nans
+    timeseries_index_interval = timeseries_index = pd.date_range(start_cfg_timezone, end_cfg_timezone, freq=str(interval) + 'T')
+
+    res = outside_temperatures_series.reindex(timeseries_index_interval).interpolate()
+    print(res)
+
+
     return outside_temperatures
 
 def get_zones(building):
@@ -563,10 +627,12 @@ def get_zones(building):
         all_zones.append(zone[:-4])
     return all_zones
 
-def get_zone_data_managers(building, now=None):
+
+def get_zone_data_managers(building, zones, now=None):
     """
     Gets the data managers for each zone as a dictionary.
     :param building: (str) Building name 
+    :param zones: (list str) The zones for which to get the data
     :param now: (datetime) the time for which the datamanager should return data. If None, we will use the 
                     current time. Timezone aware.
     :return: {zone: DataManager}
@@ -578,23 +644,24 @@ def get_zone_data_managers(building, now=None):
     utc_now = now.astimezone(tz=pytz.utc)
 
     building_cfg = get_config(building)
-    zones = get_zones(building)
     client = choose_client(building_cfg)
 
     zone_managers = {}
     for zone in zones:
         zone_config = get_zone_config(building, zone)
-        zone_managers[zone] = DataManager(controller_cfg=building_cfg, advise_cfg=zone_config, client=client,
+        zone_managers[zone] = DataManager.DataManager(controller_cfg=building_cfg, advise_cfg=zone_config, client=client,
                                           zone=zone, now=utc_now)
     return zone_managers
 
-def get_occupancy_matrix(building, start, end, interval):
+
+def get_occupancy_matrix(building, zones, start, end, interval):
     """
     Gets the occupancy matrix for the given building. This means that we get a dictionary index by zone
     where we get the occupancy for the given zone from start to end provided in the given interval. Taking the mean
     occupancy for the interval.
     :param building: (string) buidling name 
-    :param start_utc: (datetime) the start of the occupancy data. timezone aware.
+    
+    :param zones: (list str) The zones for which to get the data.:param start_utc: (datetime) the start of the occupancy data. timezone aware.
     :param end_utc: (datetime) the end of the occupancy data. timezone aware.
     :param interval: (int) minute intervals in which to get the data
     :return: {zone: pd.df columns="occ" with timeseries data from start to end (inclusive) with the interval as 
@@ -603,29 +670,33 @@ def get_occupancy_matrix(building, start, end, interval):
     """
     # TODO implement archiver zone occupancy with predictions.
 
-    return get_data_matrix(building, start, end, interval, "occupancy")
+    return get_data_matrix(building, zones, start, end, interval, "occupancy")
 
-def get_comfortband_matrix(building, start, end, interval):
+
+def get_comfortband_matrix(building, zones, start, end, interval):
     """
     Gets the comfortband matrix for the given building. This means that we get a dictionary index by zone
     where we get the comfortband for the given zone from start to end provided in the given interval. Taking the mean
     comfortband for the interval.
     :param building: (string) buidling name 
-    :param start_utc: (datetime) the start of the comfortband data. timezone aware.
+    
+    :param zones: (list str) The zones for which to get the data.:param start_utc: (datetime) the start of the comfortband data. timezone aware.
     :param end_utc: (datetime) the end of the comfortband data. timezone aware.
     :param interval: (int) minute intervals in which to get the data
     :return: {zone: pd.df columns="t_high", "t_low" with timeseries data from start to end (inclusive) 
     with the interval as frequency. will be in timezone of config file} 
     The intervals will be found by taking the mean comfortband temperatures in the interval. 
     """
-    return get_data_matrix(building, start, end, interval, "comfortband")
+    return get_data_matrix(building, zones, start, end, interval, "comfortband")
 
-def get_safety_matrix(building, start, end, interval):
+
+def get_safety_matrix(building, zones, start, end, interval):
     """
     Gets the safety matrix for the given building. This means that we get a dictionary index by zone
     where we get the safety for the given zone from start to end provided in the given interval. Taking the mean
     safety for the interval.
     :param building: (string) buidling name 
+    :param zones: (list str) The zones for which to get the data.
     :param start_utc: (datetime) the start of the safety data. timezone aware.
     :param end_utc: (datetime) the end of the safety data. timezone aware.
     :param interval: (int) minute intervals in which to get the data
@@ -633,14 +704,16 @@ def get_safety_matrix(building, start, end, interval):
     with the interval as frequency. will be in timezone of config file} 
     The intervals will be found by taking the mean safety temperatures in the interval.  
     """
-    return get_data_matrix(building, start, end, interval, "safety")
+    return get_data_matrix(building, zones, start, end, interval, "safety")
 
-def get_price_matrix(building, start, end, interval):
+
+def get_price_matrix(building, zones, start, end, interval):
     """
     Gets the price matrix for the given building. This means that we get a dictionary index by zone
     where we get the price for the given zone from start to end provided in the given interval. Taking the mean
     price for the interval.
     :param building: (string) building name 
+    :param zones: (list str) The zones for which to get the data.
     :param start_utc: (datetime) the start of the data. timezone aware.
     :param end_utc: (datetime) the end of the data. timezone aware.
     :param interval: (int) minute intervals in which to get the data
@@ -648,14 +721,16 @@ def get_price_matrix(building, start, end, interval):
     with the interval as frequency. will be in timezone of config file} 
     The intervals will be found by taking the mean price in the interval.  
     """
-    return get_data_matrix(building, start, end, interval, "prices")
+    return get_data_matrix(building, zones, start, end, interval, "prices")
 
-def get_lambda_matrix(building, start, end, interval):
+
+def get_lambda_matrix(building, zones, start, end, interval):
     """
     Gets the lambda matrix for the given building. This means that we get a dictionary index by zone
     where we get the lambda for the given zone from start to end provided in the given interval. Taking the mean
     lambda for the interval.
     :param building: (string) building name 
+    :param zones: (list str) The zones for which to get the data.
     :param start_utc: (datetime) the start of the data. timezone aware.
     :param end_utc: (datetime) the end of the data. timezone aware.
     :param interval: (int) minute intervals in which to get the data
@@ -663,21 +738,23 @@ def get_lambda_matrix(building, start, end, interval):
     with the interval as frequency. will be in timezone of config file} 
     The intervals will be found by taking the mean price in the interval.  
     """
-    return get_data_matrix(building, start, end, interval, "prices")
+    return get_data_matrix(building, zones, start, end, interval, "prices")
 
-def get_data_matrix(building, start, end, interval, data_func):
+
+def get_data_matrix(building, zones, start, end, interval, data_type):
     """
     Gets the data matrix for the given building for the given data funciton.
     This means that we get a dictionary index by zone where we get the data for the given zone from start to end 
     in the given interval. Taking the mean data values for the interval.
     :param building: (string) building name 
+    :param zones: (list str) The zones for which to get the data.
     :param start_utc: (datetime) the start of the comfortband data. timezone aware.
     :param end_utc: (datetime) the end of the comfortband data. timezone aware.
     :param interval: (int) minute intervals in which to get the data
-    :param data_func: (str) The type of data to get. For now we can choose 
+    :param data_type: (str) The type of data to get. For now we can choose 
                             ["occupancy", "comfortband", "safety", "prices", "lambda"]
-    :return: {zone: pd.df columns="t_low" "t_high" with timeseries data from start to end (inclusive) with the interval 
-    as frequency. will be in timezone of config file} The intervals will be found by taking the mean comforband in the 
+    :return: {zone: pd.df according to data_type with timeseries data from start to end (inclusive) with the interval 
+    as frequency. will be in timezone of config file} The intervals will be found by taking the mean of data_tyep in the 
      interval. NOTE: the time series will have seconds=milliseconds=0. 
     """
     building_cfg = get_config(building)
@@ -695,7 +772,7 @@ def get_data_matrix(building, start, end, interval, data_func):
     start_cfg_timezone = start_utc.astimezone(tz=pytz.timezone(building_cfg["Pytz_Timezone"]))
     end_cfg_timezone = end_utc.astimezone(tz=pytz.timezone(building_cfg["Pytz_Timezone"]))
 
-    zone_data_managers = get_zone_data_managers(building, start_utc)
+    zone_data_managers = get_zone_data_managers(building, zones, start_utc)
     all_zone_data = {}
     # gather and process data
     for zone, data_manager in zone_data_managers.items():
@@ -704,18 +781,18 @@ def get_data_matrix(building, start, end, interval, data_func):
         # have to get data in day intervals.
         while zone_start_cfg_timezone.date() <= end_cfg_timezone.date():
             # Deciding the type of data to get.
-            if data_func == "occupancy":
+            if data_type == "occupancy":
                 temp_data = data_manager.get_better_occupancy_config(zone_start_cfg_timezone)
-            elif data_func == "comfortband":
+            elif data_type == "comfortband":
                 temp_data = data_manager.get_better_comfortband(zone_start_cfg_timezone)
-            elif data_func == "safety":
+            elif data_type == "safety":
                 temp_data = data_manager.get_better_safety(zone_start_cfg_timezone)
-            elif data_func == "prices":
+            elif data_type == "prices":
                 temp_data = data_manager.get_better_prices(zone_start_cfg_timezone)
-            elif data_func == "lambda":
+            elif data_type == "lambda":
                 temp_data = data_manager.get_better_lambda(zone_start_cfg_timezone)
             else:
-                raise Exception("Bad data func argument passed: %s" % data_func)
+                raise Exception("Bad data func argument passed: %s" % data_type)
             zone_data.append(temp_data)
             zone_start_cfg_timezone += datetime.timedelta(days=1)
         # Process data
@@ -792,6 +869,27 @@ def get_thermostats(client, hod, building):
     tstats = {tstat["?zone"]: Thermostat(client, tstat["?uri"]) for tstat in tstat_query_data}
     return tstats
 
+# ========== ACUTATION HELPER FUNCTIONS ===========
+
+
+# TODO fix this function up.
+def actuate_lights(now_cfg_timezone, cfg_building, cfg_zone, zone, client):
+    """
+    
+    :param now_cfg_timezone: 
+    :param cfg_building: 
+    :param cfg_zone: 
+    :param zone: 
+    :param client: 
+    :return: 
+    """
+    if is_DR(now_cfg_timezone, cfg_building):
+        print("NOTE: Running the lights script from zone %s." % zone)
+        lights.lights(building=cfg_building["Building"], client=client, actuate=True)
+        # Overriding the lights.
+        cfg_zone["Actuate_Lights"] = False
+        with open("Buildings/" + cfg_building["Building"] + "/ZoneConfigs/" + zone + ".yml", 'wb') as ymlfile:
+            yaml.dump(cfg_zone, ymlfile)
 
 # ============ PLOTTING FUNCTIONS ============
 
@@ -962,36 +1060,57 @@ if __name__ == "__main__":
     # print(zone_data[zone_data["action"] == 5].shape)
     # print(zone_data[zone_data["action"] == 2].shape)
 
-    test_barrier = True
-    if test_barrier:
-        barrier = Barrier(2)
-        import time
-        import threading
+    # ===== TESTING THE BARRIER
+    # test_barrier = True
+    # if test_barrier:
+    #     barrier = Barrier(2)
+    #     import time
+    #     import threading
+    #
+    #
+    #     def func1():
+    #         time.sleep(3)
+    #         #
+    #         barrier.wait()
+    #         #
+    #         print('Working from func1')
+    #         return
+    #
+    #
+    #     def func2():
+    #         time.sleep(5)
+    #         #
+    #         barrier.wait()
+    #         #
+    #         print('Working from func2')
+    #         return
+    #
+    #
+    #     threading.Thread(target=func1).start()
+    #     threading.Thread(target=func2).start()
+    #
+    #     time.sleep(6)
+    #
+    #     # check if reset
+    #     threading.Thread(target=func1).start()
+    #     threading.Thread(target=func2).start()
 
+    BUILDING = "ciee"
+    ZONES = get_zones(BUILDING)
+    ZONE = ZONES[0]
+    print(ZONE)
+    building_config = get_config(BUILDING)
+    zone_config = get_zone_config(BUILDING, ZONE)
+    zone_config = get_zone_config(BUILDING, ZONE)
 
-        def func1():
-            time.sleep(3)
-            #
-            barrier.wait()
-            #
-            print('Working from func1')
-            return
+    start = get_utc_now() - datetime.timedelta(hours=5)
+    end = start + datetime.timedelta(hours=10)
 
+    client = choose_client()
 
-        def func2():
-            time.sleep(5)
-            #
-            barrier.wait()
-            #
-            print('Working from func2')
-            return
+    data_manager = DataManager.DataManager(building_config, zone_config, client, ZONE,
+                 now=None)
 
+    thermal_data_manager = ThermalDataManager.ThermalDataManager(building_config, client, interval=5)
 
-        threading.Thread(target=func1).start()
-        threading.Thread(target=func2).start()
-
-        time.sleep(6)
-
-        # check if reset
-        threading.Thread(target=func1).start()
-        threading.Thread(target=func2).start()
+    print(get_outside_temperatures(building_config, zone_config, start, end, data_manager, thermal_data_manager))
