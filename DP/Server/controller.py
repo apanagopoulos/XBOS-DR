@@ -15,10 +15,13 @@ from NormalSchedule import NormalSchedule
 from SimulationTstat import SimulationTstat
 from ThermalDataManager import ThermalDataManager
 
-sys.path.insert(0, './MPC')
-sys.path.insert(0, './MPC/ThermalModels')
-from Advise import Advise
-from MPCThermalModel import MPCThermalModel
+#sys.path.insert(0, './MPC')
+#sys.path.insert(0, './MPC/ThermalModels')
+
+#sys.path.append('./MPC')
+import MPC
+from MPC.Advise import Advise
+from MPC.ThermalModels.MPCThermalModel import MPCThermalModel
 
 # from AverageThermalModel import *
 
