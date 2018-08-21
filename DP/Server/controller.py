@@ -1,9 +1,7 @@
 import datetime
-import math
 import sys
 import threading
 import time
-import traceback
 from collections import defaultdict
 
 import pytz
@@ -30,7 +28,7 @@ from xbos.services.hod import HodClient
 # TODO set up a moving average for how long it took for action to take place.
 # the main controller
 def hvac_control(cfg_building, cfg_zones, tstats, thermal_model, zones, building, start, consumption_storage,
-                 actuate_zones, debug=False, optimization_type="DP", dp_optimizer=None, lp_optimizer=None):
+                 actuate_zones, optimizer, debug=False, client=None):
     """
     
     :param cfg_building: building config.
@@ -50,41 +48,33 @@ def hvac_control(cfg_building, cfg_zones, tstats, thermal_model, zones, building
     # I dont like this.
     end = start + datetime.timedelta(hours=4)
 
-    try:
+    # ---- Optimization ----
+    zone_temperatures = {dict_zone: dict_tstat.temperature for dict_zone, dict_tstat in tstats.items()}
 
-        zone_temperatures = {dict_zone: dict_tstat.temperature for dict_zone, dict_tstat in tstats.items()}
+    adv_start = time.time()
 
-        adv_start = time.time()
+    # Start given optimization
+    optimal_actions, optimal_setpoints = optimizer.advise(start, end, zones, cfg_building, cfg_zones, thermal_model,
+                                                          zone_temperatures, consumption_storage)
 
-        # Start given optimization
-        if optimization_type == "DP":
-            optimal_actions = dp_optimizer.advise(start, end, zones, cfg_building, cfg_zones, thermal_model,
-                                                  zone_temperatures, consumption_storage)
-        elif optimization_type == "LP":
-            optimal_actions = lp_optimizer.advise(start, end, zones, cfg_building, cfg_zones, thermal_model,
-                                                  zone_temperatures, consumption_storage)
-        else:
-            raise Exception("Invalid optimization type given.")
+    if debug:
+        print("Action for zones %s" % str(optimal_actions))
+        print("")
 
-        if debug:
-            print("Action for zones %s" % str(optimal_actions))
-            print("")
+    adv_end = time.time()
 
-        adv_end = time.time()
+    # ---- Optimization end ----
 
-    except Exception:
-        print("ERROR: For zones %s." % str(zones))
-        print(traceback.format_exc())
-        # TODO Find a better way for exceptions
-        return False, None
 
     # Get data for finding setpoints given the action
     # TODO FIX INTERVAL
     INTERVAL = 15
     # TODO FIX The TIME in utils. it returns data which has second and microsecond set to zero.
-    start_with_striped = start.replace(microsecond=0, second=0)
-    end_with_striped = end.replace(microsecond=0, second=0)
-    safety_constraints_zones = utils.get_safety_matrix(building, zones, start_with_striped, end_with_striped, INTERVAL)
+    # start_with_striped = start.replace(microsecond=0, second=0)
+    # end_with_striped = end.replace(microsecond=0, second=0)
+    safety_constraints_zones = utils.get_safety_matrix(building, zones, start, end, INTERVAL,
+                                                       datamanager_zones=utils.get_zone_data_managers(building, zones,
+                                                                                                      start, client))
 
     # Initialize dictionary which keeps track of the success of writing and finding setpoints for the given zone.
     succeeded_zones = {}
@@ -97,85 +87,25 @@ def hvac_control(cfg_building, cfg_zones, tstats, thermal_model, zones, building
         # Get zone specific information
         cfg_zone = cfg_zones[iter_zone]
         temperature_zone = zone_temperatures[iter_zone]
-        action_zone = optimal_actions[iter_zone]
-        safety_constraint_current = safety_constraints_zones[iter_zone].loc[start_with_striped]
+        safety_constraint_current = safety_constraints_zones[iter_zone].loc[
+            start.astimezone(tz=utils.get_config_timezone(cfg_building))]
         tstat = tstats[iter_zone]
 
-        # action "0" is Do Nothing, action "1" is Heating, action "2" is Cooling
-        if action_zone == utils.NO_ACTION:
-            heating_setpoint = temperature_zone - cfg_zone["Advise"]["Minimum_Comfortband_Height"] / 2.
-            cooling_setpoint = temperature_zone + cfg_zone["Advise"]["Minimum_Comfortband_Height"] / 2.
-
-            if heating_setpoint < safety_constraint_current["t_low"]:
-                heating_setpoint = safety_constraint_current["t_low"]
-
-                if (cooling_setpoint - heating_setpoint) < cfg_zone["Advise"]["Minimum_Comfortband_Height"]:
-                    cooling_setpoint = min(safety_constraint_current["t_high"],
-                                           heating_setpoint + cfg_zone["Advise"]["Minimum_Comfortband_Height"])
-
-            elif cooling_setpoint > safety_constraint_current["t_high"]:
-                cooling_setpoint = safety_constraint_current["t_high"]
-
-                if (cooling_setpoint - heating_setpoint) < cfg_zone["Advise"]["Minimum_Comfortband_Height"]:
-                    heating_setpoint = max(safety_constraint_current["t_high"]["t_low"],
-                                           cooling_setpoint - cfg_zone["Advise"]["Minimum_Comfortband_Height"])
-
-            # round to integers since the thermostats round internally.
-            heating_setpoint = math.floor(heating_setpoint)
-            cooling_setpoint = math.ceil(cooling_setpoint)
-
-            p = {"override": True, "heating_setpoint": heating_setpoint, "cooling_setpoint": cooling_setpoint,
-                 "mode": 3}
-            print "Doing nothing"
-
-        # TODO Rethink how we set setpoints for heating and cooling and for DR events.
-        # heating
-        elif action_zone == utils.HEATING_ACTION:
-            heating_setpoint = temperature_zone + 2 * cfg_zone["Advise"]["Hysterisis"]
-            cooling_setpoint = heating_setpoint + cfg_zone["Advise"]["Minimum_Comfortband_Height"]
-
-            if cooling_setpoint > safety_constraint_current["t_high"]:
-                cooling_setpoint = safety_constraint_current["t_high"]
-
-                # making sure we are in the comfortband
-                if (cooling_setpoint - heating_setpoint) < cfg_zone["Advise"]["Minimum_Comfortband_Height"]:
-                    heating_setpoint = max(safety_constraint_current["t_low"],
-                                           cooling_setpoint - cfg_zone["Advise"]["Minimum_Comfortband_Height"])
-
-            # round to integers since the thermostats round internally.
-            heating_setpoint = math.ceil(heating_setpoint)
-            cooling_setpoint = math.ceil(cooling_setpoint)
-
-            p = {"override": True, "heating_setpoint": heating_setpoint, "cooling_setpoint": cooling_setpoint,
-                 "mode": 3}
-            print "Heating"
-
-        # cooling
-        elif action_zone == utils.COOLING_ACTION:
-            cooling_setpoint = temperature_zone - 2 * cfg_zone["Advise"]["Hysterisis"]
-            heating_setpoint = cooling_setpoint - cfg_zone["Advise"]["Minimum_Comfortband_Height"]
-
-            if heating_setpoint < safety_constraint_current["t_low"]:
-                heating_setpoint = safety_constraint_current["t_low"]
-
-                # making sure we are in the comfortband
-                if (cooling_setpoint - heating_setpoint) < cfg_zone["Advise"]["Minimum_Comfortband_Height"]:
-                    cooling_setpoint = min(safety_constraint_current["t_high"],
-                                           heating_setpoint + cfg_zone["Advise"]["Minimum_Comfortband_Height"])
-
-            # round to integers since the thermostats round internally.
-            heating_setpoint = math.floor(heating_setpoint)
-            cooling_setpoint = math.floor(cooling_setpoint)
-
-            p = {"override": True, "heating_setpoint": heating_setpoint, "cooling_setpoint": cooling_setpoint,
-                 "mode": 3}
-            print "Cooling"
+        # set the setpoints we want to use
+        if optimal_actions is not None:
+            optimal_setpoint = utils.action_logic(cfg_zone, temperature_zone, optimal_actions[iter_zone])
         else:
-            print "Problem with action."
-            succeeded_zones[iter_zone] = False
-            message_zones[iter_zone] = None
+            assert optimal_setpoints is not None
+            optimal_setpoint = optimal_setpoints[iter_zone]
 
-        print("Zone: " + iter_zone + ", action: " + str(p))
+        msg = utils.safety_check(cfg_zone, temperature_zone, safety_constraint_current,
+                                 optimal_setpoint["cooling_setpoint"], optimal_setpoint["heating_setpoint"])
+
+        # Set additional information for tstat message
+        msg["override"] = True
+        msg["mode"] = 3
+
+        print("Zone: " + iter_zone + ", action: " + str(msg))
 
         # # Plot the MPC graph.
         # if advise_cfg["Advise"]["Print_Graph"]:
@@ -186,29 +116,46 @@ def hvac_control(cfg_building, cfg_zones, tstats, thermal_model, zones, building
         #                      file=True)
 
         # try to commit the changes to the thermostat, if it doesnt work 10 times in a row ignore and try again later
-        for i in range(cfg_zone["Advise"]["Thermostat_Write_Tries"]):
-            try:
-                if actuate_zones[iter_zone]:
-                    tstat.write(p)
-                # Setting last action in the thermal model after we have succeeded in writing to the tstat.
-                zone_thermal_models[iter_zone].set_last_action(
-                    int(action_zone))
-                break
-            except:
-                if i == cfg_zone["Advise"]["Thermostat_Write_Tries"] - 1:
-                    print("Could not write to tstat for zone %s. Trying again." % iter_zone)
-                    succeeded_zones[iter_zone] = False
-                    message_zones[iter_zone] = None
-                continue
+        if msg is not None:
+            for i in range(cfg_zone["Advise"]["Thermostat_Write_Tries"]):
+                try:
+                    if actuate_zones[iter_zone] and not debug:
+                        tstat.write(msg)
 
-        succeeded_zones[iter_zone] = True
-        message_zones[iter_zone] = p
+                    succeeded_zones[iter_zone] = True
+                    message_zones[iter_zone] = msg
+                    break
+                except:
+                    if i == cfg_zone["Advise"]["Thermostat_Write_Tries"] - 1:
+                        print("Could not write to tstat for zone %s. Trying again." % iter_zone)
+                        succeeded_zones[iter_zone] = False
+                        message_zones[iter_zone] = None
+                    continue
+        else:
+            # We qualify not getting a good action as an unsuccessful optimization.
+            succeeded_zones[iter_zone] = False
+            message_zones[iter_zone] = None
 
     return succeeded_zones, message_zones
 
 
+def get_action_from_setpoints(cfg_zone, setpoints, temperature_zone):
+    cooling_setpoint = setpoints["cooling_setpoint"]
+    heating_setpoint = setpoints["heating_setpoint"]
+
+    hysterisis = cfg_zone["Advise"]["Hysterisis"]
+
+    if cooling_setpoint < temperature_zone + hysterisis:
+        return utils.COOLING_ACTION
+    elif heating_setpoint > temperature_zone + hysterisis:
+        return utils.HEATING_ACTION
+    else:
+        return utils.NO_ACTION
+
+
 class ZoneThread(threading.Thread):
     def __init__(self, tstats, zones, client, thermal_models, building, barrier, mutex, consumption_storage,
+                 normal_schedule,
                  optimization_type, dp_optimizer=None, lp_optimizer=None, debug=False,
                  simulate=False, simulate_start=None, simulate_end=None):
         """
@@ -221,6 +168,7 @@ class ZoneThread(threading.Thread):
         :param barrier: threading barrier. Needs to be shared by threads. 
         :param mutex: threading mutex. Needs to be shared by threads. 
         :param consumption_storage: ConsumptionStorage object shared across threads. 
+        :param normal_schedule: The normal schedule class that should be shared with the zones in this thread.
         :param optimization_type: str "DP" for dynamic programming and "LP" for Linear Programming
         :param dp_optimizer: DP optimizer class which is shared by all threads.
         :param lp_optimizer: LP Optimizer class which is shared by all threads. 
@@ -254,6 +202,9 @@ class ZoneThread(threading.Thread):
 
         # setting consumption storage
         self.consumption_storage = consumption_storage
+
+        # setting normal schedule
+        self.normal_schedule = normal_schedule
 
         # Checking if valid optimization parameters were given
         if optimization_type == "DP" and dp_optimizer is None:
@@ -353,6 +304,13 @@ class ZoneThread(threading.Thread):
                                         and not stop_program_zone[iter_zone] for
                              iter_zone, start_end in actuation_start_end_cfg_tz.items()}
 
+            # Keeps track of which zones where the optimization and normal schedule worked (weather for simulation or
+            # normal acutation).
+            did_succeed_zones = {iter_zone: False for iter_zone in self.zones}
+
+            # set variable to store message data for each zone.
+            message_data_zones = {}
+
             # debug messages for start and end times
             if self.debug:
                 self.mutex.acquire()
@@ -391,50 +349,73 @@ class ZoneThread(threading.Thread):
                 # Flag whether to run MPC.
                 run_mpc_zones = {iter_zone: cfg_zone["Advise"]["MPC"] for iter_zone, cfg_zone in cfg_zones.items()}
 
+                # Set a dictionary for zones that need to be actuated but have not yet been successful
+                # and which can be actuated through the MPC.
+                should_actuate_zones_mpc = {iter_zone: actuate_zones[iter_zone] and not did_succeed_zones[iter_zone]
+                                                       and run_mpc_zones[iter_zone]
+                                            for iter_zone in self.zones}
+
                 # Running the MPC if possible.
                 if any(run_mpc_zones.values()):
                     # Run MPC. Try up to cfg_zone["Advise"]["Thermostat_Write_Tries"] to find and write action.
-                    try_count = 0
+                    try_count_zones = {iter_zone: 0 for iter_zone in self.zones}
+
                     # set that all zones have not succeeded yet.
                     succeeded_zones = {iter_zone: False for iter_zone in self.zones}
+
                     while not all(succeeded_zones.values()) and any(run_mpc_zones.values()):
-                        # TODO (FOR NOW DEBUG ALSO MAKES THE PROGRAM NOT ACTUATE)
-                        succeeded_zones, action_data = hvac_control(cfg_building, cfg_zones, self.tstats,
-                                                                    self.thermal_models,
-                                                                    self.zones, self.building, now_utc,
-                                                                    consumption_storage=self.consumption_storage,
-                                                                    debug=self.debug, actuate_zones=actuate_zones,
-                                                                    optimization_type=self.optimization_type,
-                                                                    dp_optimizer=self.dp_optimizer,
-                                                                    lp_optimizer=self.lp_optimizer)
+                        if self.optimization_type == "DP":
+                            succeeded_zones, action_data = hvac_control(cfg_building, cfg_zones, self.tstats,
+                                                                        self.thermal_models,
+                                                                        self.zones, self.building, now_utc,
+                                                                        consumption_storage=self.consumption_storage,
+                                                                        debug=self.debug,
+                                                                        actuate_zones=should_actuate_zones_mpc,
+                                                                        optimizer=self.dp_optimizer, client=self.client)
+                        elif self.optimization_type == "LP":
+                            succeeded_zones, action_data = hvac_control(cfg_building, cfg_zones, self.tstats,
+                                                                        self.thermal_models,
+                                                                        self.zones, self.building, now_utc,
+                                                                        consumption_storage=self.consumption_storage,
+                                                                        debug=self.debug,
+                                                                        actuate_zones=should_actuate_zones_mpc,
+                                                                        optimizer=self.lp_optimizer, client=self.client)
 
                         # Increment the counter and set the flag for the normal schedule if the MPC failed too often.
+                        # Add one since we tried once and didn't succeed.
+                        for iter_zone, iter_zone_succeeded in succeeded_zones.items():
+                            if not iter_zone_succeeded:
+                                try_count_zones[iter_zone] += 1
+                            else:
+                                # If succeeded then we actuated and don't need to actuate any more.
+                                # Also, set setpoints that were executed.
+                                message_data_zones[iter_zone] = action_data[iter_zone]
+                                should_actuate_zones_mpc[iter_zone] = False
+                                did_succeed_zones[iter_zone] = True
+
+                        # If not all succeeded, then we should wait and try again. If it failed too often, normal
+                        # schedule needs to be called.
                         if not all(succeeded_zones.values()):
-                            # Add once since we tried once and didn't succeed.
-                            try_count += 1
                             time.sleep(10)
                             for iter_zone, cfg_zone in cfg_zones.items():
-                                if try_count == cfg_zone["Advise"]["Thermostat_Write_Tries"]:
+                                if try_count_zones[iter_zone] == cfg_zone["Advise"]["Thermostat_Write_Tries"]:
                                     self.mutex.acquire()
                                     print("Problem with MPC for zone %s, entering normal schedule." % iter_zone)
                                     print("")
                                     self.mutex.release()
                                     run_mpc_zones[iter_zone] = False
-                                    # TODO Add note in LOGGER that MPC DIDN"T WORK HERE
-
-                                    # TODO rethink, messes up later parts like manual setpoin changes.
-                                    # # Set actuate to False for zones that succeeded. No need to actuate again till next round.
-                                    # for iter_zone, succeeded in succeeded_zones.items():
-                                    #     if succeeded:
-                                    #         actuate_zones[iter_zone] = False
+                                    # TODO if here, Add line in LOGGER output that MPC DIDN"T WORK HERE
 
                     # Log this action if succeeded.
                     if all(succeeded_zones.values()):
                         # TODO If we are in an interval that overlaps with the end of the DR event then
                         # part of the optimization for one interval is in DR and the other outside. We should account
                         # for this.
-                        print("SHOULD LOG HERE")
                         for iter_zone, cfg_zone in cfg_zones.items():
+                            # we want to know that we succeeded with all the zones here.
+                            did_succeed_zones[iter_zone] = True
+
+                            # Do the log here
                             is_dr = utils.is_DR(now_cfg_timezone, cfg_building)
                             if is_dr:
                                 mpc_lambda = cfg_zone["Advise"]["DR_Lambda"]
@@ -442,78 +423,99 @@ class ZoneThread(threading.Thread):
                                 mpc_lambda = cfg_zone["Advise"]["General_Lambda"]
 
                             # TODO update MPCLogger to multizones.
-                            MPCLogger.mpc_log(building, iter_zone, now_utc, float(cfg_building["Interval_Length"]),
+                            MPCLogger.mpc_log(self.building, iter_zone, now_utc, float(cfg_building["Interval_Length"]),
                                               is_mpc=True,
                                               is_schedule=False,
                                               mpc_lambda=mpc_lambda, shut_down_system=False)
 
                 # Running the normal Schedule
+
                 if not all(run_mpc_zones.values()):
-                    # go into normal schedule
-                    normal_schedule = NormalSchedule(cfg_building, self.tstats[self.zone], cfg_zone)
+                    # Set a dictionary for zones that need to be actuated but have not yet been successful.
+                    should_actuate_zones_schedule = {iter_zone: actuate_zones[iter_zone]
+                                                                and not did_succeed_zones[iter_zone]
+                                                                and not run_mpc_zones[iter_zone]
+                                                     for iter_zone in self.zones}
 
-                    # TODO ADD THREAD BARRIER the normal schedule if it needs it for simulation or other stuff.
-                    normal_schedule_succeeded, action_data = normal_schedule.normal_schedule(
-                        debug=self.debug)  # , simulate=simulate)
-                    # Log this action.
-                    if normal_schedule_succeeded:
-                        MPCLogger.mpc_log(building, self.zone, now_utc, float(cfg_building["Interval_Length"]),
-                                          is_mpc=False,
-                                          is_schedule=True,
-                                          expansion=cfg_zone["Advise"]["Baseline_Dr_Extend_Percent"],
-                                          shut_down_system=False)
-                    else:
-                        # If normal schedule fails then we have big problems.
+                    normal_schedule_succeeded, action_data = hvac_control(cfg_building, cfg_zones, self.tstats,
+                                                                          self.thermal_models,
+                                                                          self.zones, self.building, now_utc,
+                                                                          consumption_storage=self.consumption_storage,
+                                                                          debug=self.debug,
+                                                                          actuate_zones=should_actuate_zones_schedule,
+                                                                          optimizer=self.normal_schedule, client=self.client)
 
-                        # Set the override to false for the thermostat so the local schedules can take over again.
-                        utils.set_override_false(tstat)
+                    if all(normal_schedule_succeeded.values()):
+                        for iter_zone in self.zones:
+                            message_data_zones[iter_zone] = action_data[iter_zone]
 
-                        # Logging the shutdown.
-                        MPCLogger.mpc_log(self.building, self.zone, now_utc, float(cfg_building["Interval_Length"]),
-                                          is_mpc=False, is_schedule=False, shut_down_system=True,
-                                          system_shut_down_msg="Normal Schedule Failed")
+                            # # Log this action.
+                            # if normal_schedule_succeeded:
+                            #     MPCLogger.mpc_log(building, self.zone, now_utc, float(cfg_building["Interval_Length"]),
+                            #                       is_mpc=False,
+                            #                       is_schedule=True,
+                            #                       expansion=cfg["Advise"]["Baseline_Dr_Extend_Percent"],
+                            #                       shut_down_system=False)
+                            # else:
+                            #     # If normal schedule fails then we have big problems.
+                            #
+                            #     # Set the override to false for the thermostat so the local schedules can take over again.
+                            #     utils.set_override_false(tstat)
+                            #
+                            #     # Logging the shutdown.
+                            #     MPCLogger.mpc_log(self.building, self.zone, now_utc, float(cfg_building["Interval_Length"]),
+                            #                       is_mpc=False, is_schedule=False, shut_down_system=True,
+                            #                       system_shut_down_msg="Normal Schedule Failed")
+                            #
+                            #     print("System shutdown for zone %s, normal schedule has not succeeded. "
+                            #           "Returning control to Thermostats. \n" % self.zone)
+                            #     break
 
-                        print("System shutdown for zone %s, normal schedule has not succeeded. "
-                              "Returning control to Thermostats. \n" % self.zone)
-                        return
+            # infer actions from setpoints set.
+            action_data_zones = {iter_zone: get_action_from_setpoints(cfg_zones[iter_zone],
+                                                                      message_data_zones[iter_zone],
+                                                                      self.tstats[iter_zone].temperature)
+                                 for iter_zone in self.zones}
 
             print(
                 "This process is for building %s" % cfg_building[
                     "Building"])  # TODO Rethink. now every thread will write this.
 
-            # Wait for the next interval if not simulating.
+            # Set the right now times. May involve waiting for a interval number of minutes to pass.
             if not self.simulate:
+                # Wait for the next interval if not simulating.
                 time.sleep(60. * float(cfg_building["Interval_Length"]) - (
                     (time.time() - starttime) % (60. * float(cfg_building["Interval_Length"]))))
 
                 # set now time.
                 now_utc = utils.get_utc_now()
 
-                # TODO MAYBE SET NOW TIME HERE.
-            # else, increment the now parameter we have.
-            # AND ADVANCE TEMPERATURE OF TSTATS.
-            # AND STORE THE SIMULATION RESULTS
             else:
+                # ADVANCE TEMPERATURE OF TSTATS and STORE THE SIMULATION RESULTS
+
                 # NOTE: Making use of the fact that MPCThermalModel stores inside, outside, action data. We
                 # will use the action_data from the hvac_control to fill the simulation dictionary as well.
-                # Filling simulation_results
+
                 utc_unix_timestamp = time.mktime(now_utc.timetuple())
                 for iter_zone in self.zones:
-                    action_data_zone = action_data[iter_zone]
+                    # Get the actions performed for this zone
+                    action_zone = action_data_zones[iter_zone]
+                    message_data_zone = message_data_zones[iter_zone]
+
                     self.simulation_results[iter_zone]["inside"][str(utc_unix_timestamp)] = self.tstats[
                         iter_zone].temperature
                     # TODO FIX WEATHER
                     # self.simulation_results[iter_zone]["outside"][str(utc_unix_timestamp)] = \
                     #     self.thermal_models[iter_zone].outside_temperature.iloc[0]
-                    self.simulation_results[iter_zone]["cooling_setpoint"][str(utc_unix_timestamp)] = action_data_zone[
+                    self.simulation_results[iter_zone]["cooling_setpoint"][str(utc_unix_timestamp)] = message_data_zone[
                         "cooling_setpoint"]
-                    self.simulation_results[iter_zone]["heating_setpoint"][str(utc_unix_timestamp)] = action_data_zone[
+                    self.simulation_results[iter_zone]["heating_setpoint"][str(utc_unix_timestamp)] = message_data_zone[
                         "heating_setpoint"]
-                    self.simulation_results[iter_zone]["state"][str(utc_unix_timestamp)] = self.thermal_models[
-                        iter_zone].last_action
+                    self.simulation_results[iter_zone]["state"][str(utc_unix_timestamp)] = action_zone
 
                     # advancing the temperatures of each zone. each thread is responsible for this.
-                    new_temperature, noise = self.tstats[iter_zone].next_temperature(debug=self.debug)
+                    new_temperature, noise = self.tstats[iter_zone].next_temperature(action_zone,
+                                                                                     debug=self.debug)
                     if self.debug:
                         self.simulation_results[iter_zone]["noise"][str(utc_unix_timestamp)] = noise
 
@@ -524,17 +526,17 @@ class ZoneThread(threading.Thread):
                 now_utc += datetime.timedelta(minutes=cfg_building["Interval_Length"])
 
                 # Print the simulation results so far.
-                if debug:
+                if self.debug:
                     self.mutex.acquire()
                     print("The simulation results for the current thread:")
                     print(self.simulation_results)
                     print("")
                     self.mutex.release()
 
-            # Checking if manual setpoint changes occurred given that we actuated that zone.
+            # Checking if manual setpoint changes occurred given that we successfully actuated that zone.
             for iter_zone, actuate_zone in actuate_zones.items():
-                if actuate_zone:
-                    action_data_zone = action_data[iter_zone]
+                if actuate_zone and did_succeed_zones[iter_zone]:
+                    action_data_zone = action_data_zones[iter_zone]
                     # end program if setpoints have been changed. (If not writing to tstat we don't want this)
                     if action_data_zone is not None and utils.has_setpoint_changed(self.tstats[iter_zone],
                                                                                    action_data_zone,
@@ -548,140 +550,216 @@ class ZoneThread(threading.Thread):
                         # Do not actuate the zone again till the end of the program
                         stop_program_zone[iter_zone] = True
 
-        # TODO FIX FIX FIX
+
         # if actuate:
-        #     # TODO FIX THE UPDATE STEP. PUT THIS OUTSIDE OF HVAC CONTROL. Put where we wait and then set now time if
-        #     TODO we are not simulating.
+        #     # TODO FIX THE UPDATE STEP.
         #     # NOTE: call update before setWeatherPredictions and set_temperatures
         #     thermal_model.update(zone_temperatures, interval=cfg["Interval_Length"])
 
         if not self.simulate:
             # Set the override to false for the thermostat so the local schedules can take over again.
-            utils.set_override_false(tstat)
+            for iter_zone in self.zones:
+                utils.set_override_false(self.tstats[iter_zone])
+
+        # making sure that the barrier does not account for this zone anymore.
+        self.mutex.acquire()
+        self.barrier.num_threads -= 1
+        self.mutex.release()
 
 
-if __name__ == '__main__':
-    # TODO check for comfortband height and whether correctly implemented
-    building = sys.argv[1]
-    ZONES = utils.get_zones(building)
+def main(building, optimization_type, simulate=False, debug=True, run_server=True, start_simulation=None, end_simulation=None):
+    """
+    Intializes the control functions and starts them.
+    :param building: (string) Building name 
+    :param optimization_type: (string) ["LP", "DP"] Type of optimization to use. 
+                    "LP" is recommended for a fast solver, "DP" is recommended for accuracy.
+    :param simulation: (Boolean) Whether to simulate or run standard control. Will not actuate tstats if set to True and 
+            will use star_simulat and end_simulation for the simulation range.
+    :param debug: (bool) Whether to print debug messages. Will also not actuate the tstats if set to true.
+    :param run_server: (bool) for whethe to run on server. Will use local get_client() method if not on server, 
+                    otherwise config file needs to specify the location of xbos entity. 
+    :param start_simulation: (datetime.datetime timezone aware) The start of time range for which to run the simulation. 
+                                Needs to be not None is simulation is True.
+    :param end_simulation: (datetime.datetime timezone aware) The end of time range for which to run the simulation. 
+                                Needs to be not None is simulation is True.
+    :return: if simulate is true it will return a dictionary of simultion results. Otherwise, return None. 
+    """
+    if simulate:
+        assert start_simulation is not None and end_simulation is not None
 
-    # TODO change simulate and debug.
-    debug = True
-    simulate = True
-
-    # read from config file
-    try:
-        yaml_filename = "Buildings/%s/%s.yml" % (sys.argv[1], sys.argv[1])
-    except:
-        sys.exit("Please specify the configuration file as: python2 controller.py config_file.yaml")
-
+    # Set building fields.
+    zones = utils.get_zones(building)
     cfg_building = utils.get_config(building)
 
-    if debug:
-        client = utils.choose_client()
-    else:
+    # Get the client.
+    # It will try to use the Server details given in the config file if run_server is true.
+    # Otherwise it will run the local xbos version.
+    if run_server:
         client = utils.choose_client(cfg_building)
+    else:
+        client = utils.choose_client()
 
-    hc = HodClient("xbos/hod", client)
+    # Get hod client.
+    hod_client = HodClient("xbos/hod", client)
 
-    tstats = utils.get_thermostats(client, hc, cfg_building["Building"])
+    # Getting the tstats for the building.
+    tstats_building = utils.get_thermostats(client, hod_client, cfg_building["Building"])
 
     # --- Thermal Model Init ------------
     # initialize and fit thermal model
+    thermal_data = utils.get_data(cfg=cfg_building, client=client, days_back=150, force_reload=False)
 
-    # only single stage cooling buildings get to retrive data. otherwise takes too long.
-    # if building in ["north-berkeley-senior-center", "ciee", "avenal-veterans-hall", "orinda-community-center",
-    #                 "avenal-recreation-center", "word-of-faith-cc", "jesse-turner-center", "berkeley-corporate-yard"]:
-    if building != "jesse-turner-center":
-        thermal_data = utils.get_data(cfg=cfg_building, client=client, days_back=150, force_reload=False)
-
-        zone_thermal_models = {}
-        for zone, zone_data in thermal_data.items():
-            # Concat zone data to put all data together and filter such that all datapoints have dt != 1
-            filtered_zone_data = zone_data[zone_data["dt"] == 5]
-            # print(zone)
-            # print(filtered_zone_data.shape)
-            if zone != "HVAC_Zone_Please_Delete_Me":
-                zone_thermal_models[zone] = MPCThermalModel(zone=zone, thermal_data=filtered_zone_data,
-                                                            interval_length=15, thermal_precision=0.05)
-    else:
-        zone_thermal_models = {}
-        for zone in tstats.keys():
-            zone_thermal_models[zone] = None
-
-    print("Trained Thermal Model")
+    zone_thermal_models = {}
+    for iter_zone, zone_data in thermal_data.items():
+        # Concat zone data to put all data together and filter such that all datapoints have dt != 1
+        filtered_zone_data = zone_data[zone_data["dt"] == 5]
+        if iter_zone != "HVAC_Zone_Please_Delete_Me":
+            zone_thermal_models[iter_zone] = MPCThermalModel(zone=iter_zone, thermal_data=filtered_zone_data,
+                                                        interval_length=15, thermal_precision=0.05)
+    if debug:
+        print("Trained Thermal Model")
     # --------------------------------------
 
-    # TODO most likely through datamanager or some sort of input. Get current temperatures for simulation
-    curr_temperatures_simulation = {zone: dict_tstat.temperature for zone, dict_tstat in tstats.items()}
-
-    # Getting the simulateTstats
-    simulate_tstats = {}
+    # setting the thermostats to be used for control.
     if simulate:
-        for zone, thermal_model_zone in zone_thermal_models.items():
-            zone_simulate_tstat = SimulationTstat(thermal_model_zone, curr_temperatures_simulation[zone])
-            zone_simulate_tstat.set_gaussian_distributions(thermal_data[zone], thermal_data[zone]["t_next"])
-            simulate_tstats[zone] = zone_simulate_tstat
+        # Set thermostats for simulation.
+        tstats_simulation = {}
+        curr_temperatures_simulation = {zone: dict_tstat.temperature for zone, dict_tstat in tstats_building.items()}
 
-    # choose the tstats to use.
-    if simulate:
-        mpc_tstats = simulate_tstats
+        for iter_zone, thermal_model_zone in zone_thermal_models.items():
+            zone_simulate_tstat = SimulationTstat(thermal_model_zone, curr_temperatures_simulation[iter_zone])
+            zone_simulate_tstat.set_gaussian_distributions(thermal_data[iter_zone], thermal_data[iter_zone]["t_next"])
+            tstats_simulation[iter_zone] = zone_simulate_tstat
+
+        tstats_control = tstats_simulation
     else:
-        mpc_tstats = tstats
+        tstats_control = tstats_building
 
-    # simulate_start = datetime.datetime(year=2018, month=4, day=3)
-    # simulate_end = simulate_start + datetime.timedelta(hours=1)
-    simulate_start = utils.get_utc_now() - datetime.timedelta(hours=0.5)
-    simulate_end = simulate_start + datetime.timedelta(hours=1)
-
-    dp_optimizer = IteratedDP(building, client, len(mpc_tstats.keys()), num_iterations=1)
+    # Get all the optimizers and normal schedule
+    dp_optimizer = IteratedDP(building, client, len(tstats_control.keys()), num_iterations=1)
     lp_optimizer = AdviseLinearProgram(building, client, num_threads=1, debug=False)
+    normal_schedule = NormalSchedule(building, client, num_threads=len(tstats_control.keys()), debug=None)
+
+    # Set consumption storage
     consumption_storage = None
 
-    optimization_type = "LP"
-
+    # initialize the control
     if optimization_type == "DP":
         # setting a barrier for the threads. this will be used in hvac_control for stopping all threads before setting
         # all zone_temperatures and weather for the thermalModel
-        num_threads = len(tstats.keys())
+        num_threads = len(tstats_control.keys())
         thread_barrier = utils.Barrier(num_threads)
         thread_mutex = threading.Semaphore(1)
         threads = []
-        for zone, tstat in mpc_tstats.items():
+        for zone in zones:
             # TODO only because we want to only run on the basketball courts.
             if building != "jesse-turner-center" or "Basketball" in zone:
-                thread = ZoneThread(mpc_tstats, [zone], client, zone_thermal_models[zone],
+                thread = ZoneThread(tstats_control, [zone], client, zone_thermal_models[zone],
                                     cfg_building["Building"], thread_barrier, thread_mutex,
-                                    consumption_storage=consumption_storage,
+                                    consumption_storage=consumption_storage, normal_schedule=normal_schedule,
                                     optimization_type=optimization_type, dp_optimizer=dp_optimizer,
                                     lp_optimizer=lp_optimizer,
                                     debug=debug, simulate=simulate,
-                                    simulate_start=simulate_start, simulate_end=simulate_end)
+                                    simulate_start=start_simulation, simulate_end=end_simulation)
                 thread.start()
                 threads.append(thread)
-
     elif optimization_type == "LP":
         # setting a barrier for the threads. this will be used in hvac_control for stopping all threads before setting
         # all zone_temperatures and weather for the thermalModel
         thread_barrier = utils.Barrier(1)
         thread_mutex = threading.Semaphore(1)
         threads = []
-        thread = ZoneThread(mpc_tstats, ZONES, client, zone_thermal_models,
+        thread = ZoneThread(tstats_control, zones, client, zone_thermal_models,
                             cfg_building["Building"], thread_barrier, thread_mutex,
-                            consumption_storage=consumption_storage,
+                            consumption_storage=consumption_storage, normal_schedule=normal_schedule,
                             optimization_type=optimization_type, dp_optimizer=dp_optimizer,
                             lp_optimizer=lp_optimizer,
                             debug=debug, simulate=simulate,
-                            simulate_start=simulate_start, simulate_end=simulate_end)
+                            simulate_start=start_simulation, simulate_end=end_simulation)
         thread.start()
         threads.append(thread)
-
     else:
         raise Exception("ERROR: Invalid Optimization type given.")
 
     for t in threads:
         t.join()
 
-    for t in threads:
-        print(t.zones)
-        print(t.simulation_results)
+    if debug:
+        for t in threads:
+            print(t.simulation_results)
+
+    if simulate:
+        simulation_results = {}
+        for t in threads:
+            simulation_results[tuple(t.zones)] = t.simulation_results
+
+
+if __name__ == '__main__':
+    # building, optimization_type, simulate=False, debug=True, run_server=True, start_simulation=None, end_simulation=None
+
+    import os
+    def ask_input(ask_name, option_list):
+        print "-----------------------------------"
+        print ask_name + ":"
+        print "-----------------------------------"
+        for idx, option in enumerate(option_list, start=1):
+            print idx, option
+        print "-----------------------------------"
+        idx = input("Please choose a building (give a number):") - 1
+        chosen_option = option_list[idx]
+        print "-----------------------------------"
+        print "Option chosen: " + str(chosen_option)
+        print "-----------------------------------"
+        return chosen_option
+
+    def ask_date(date_type):
+        print "-----------------------------------"
+        print  "Input all the dates for %s and time in the timezone of the building." % date_type
+        print "-----------------------------------"
+        day_chosen = int(input("Day: "))
+        assert 1 <= day_chosen <= 31
+        month_chosen = int(input("Month: "))
+        assert 1 <= month_chosen <= 12
+        year_chosen = int(input("Year: "))
+        assert 1900 <= year_chosen <= utils.get_utc_now().year + 1
+        hour_chosen = int(input("Hour: "))
+        assert 0 <= hour_chosen <= 24
+        minute_chosen = int(input("Minute: "))
+        assert 0 <= minute_chosen <= 60
+
+        date_datetime = datetime.datetime(year=year_chosen, month=month_chosen, day=day_chosen, hour=hour_chosen, minute=minute_chosen)
+
+        print "-----------------------------------"
+        print "Date and time chosen: " + utils.get_datetime_to_string(date_datetime)
+        print "-----------------------------------"
+        return datetime.datetime(year=year_chosen, month=month_chosen, day=day_chosen, hour=hour_chosen, minute=minute_chosen)
+
+    def ask_end_date(start_date):
+        print "-----------------------------------"
+        hours_after_start = int(input("How many hours after the start of simulation %s should the end be: " % utils.get_datetime_to_string(start_date)))
+        end_date = start_date + datetime.timedelta(hours=hours_after_start)
+        print "-----------------------------------"
+        print "Date and time chosen:" + utils.get_datetime_to_string(end_date)
+        print "-----------------------------------"
+        return end_date
+
+    building = ask_input("Building", os.walk(utils.SERVER_DIR_PATH + "/Buildings/").next()[1])
+    optimization_type = ask_input("Optimization Type", ["DP", "LP"])
+    simulate_string = ask_input("Should simulate", ["Yes", "No"])
+    simulate = simulate_string == "Yes"
+    debug_string =  ask_input("Should debug", ["Yes", "No"])
+    debug = debug_string == "Yes"
+    run_server_string =  ask_input("Should run on server", ["Yes", "No"])
+    run_server = run_server_string == "Yes"
+    if simulate:
+        start_simulation = ask_date("start")
+        end_simulation = ask_end_date(start_simulation)
+    else:
+        start_simulation = None
+        end_simulation = None
+
+
+    result = main(building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation)
+
+
+

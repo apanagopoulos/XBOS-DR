@@ -515,6 +515,40 @@ class DataManager:
 
         return df_lambda
 
+    def get_better_is_dr(self, date, freq="1T"):
+        """
+        Gets the is_dr from the building configuration file. Uses the provided date for which the lambdas should
+        hold. Cannot have Nan values.
+        :param date: The date for which we want to get the data from config. Timezone aware.
+        :param freq: The frequency of time series. Default is one minute.
+        :return: pd.series with time_series index for the date provided and in timezone aware
+         datetime as provided by the configuration file. 
+        """
+        # Set the date to the controller timezone.
+        date = date.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
+
+        # Get DR Data and whether to get DR prices.
+        DR_start_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Start"])
+        DR_start = datetime.datetime.combine(date, DR_start_time)
+        DR_finish_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Finish"])
+        DR_finish = datetime.datetime.combine(date, DR_finish_time)
+        is_DR = self.controller_cfg["Pricing"]["DR"]
+
+        # The start and end day for the date for which to get prices.
+        start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = start_date + datetime.timedelta(days=1)
+        date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
+
+        # create nan filled dataframe and then populate it
+        df_is_dr = pd.Series(index=date_range)
+
+        df_is_dr.loc[start_date:end_date] = False
+
+        # setting if Dr time.
+        if is_DR:
+            df_is_dr.loc[DR_start:DR_finish] = True
+
+        return df_is_dr
 
     def get_better_safety(self, date, freq="1T"):
         """
@@ -669,14 +703,14 @@ if __name__ == '__main__':
     advise_cfg = utils.get_zone_config(building, zone)
 
 
-    client = utils.choose_client()
+    # client = utils.choose_client()
 
-    dm = DataManager(cfg, advise_cfg, client, "HVAC_Zone_Centralzone")
+    dm = DataManager(cfg, advise_cfg, None, "HVAC_Zone_Centralzone")
 
     start = utils.get_utc_now()
     end = start + datetime.timedelta(days=1)
 
-    print(dm.get_better_lambda(start))
+    print(dm.get_better_is_dr(start))
 
     # print "Weather Predictions:"
     # print dm.weather_fetch()

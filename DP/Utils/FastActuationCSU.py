@@ -90,10 +90,12 @@ cfg_building = utils.get_config(BUILDING)
 debug = False
 
 # Getting clients
-if debug:
-    client = utils.choose_client()
-else:
-    client = utils.choose_client(cfg_building)
+client = get_client()
+# if debug:
+#     client = utils.choose_client()
+# else:
+#     client = utils.choose_client(cfg_building)
+
 hc = HodClient("xbos/hod", client)
 
 print("================================================")
@@ -141,6 +143,8 @@ end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 
 last_cooling_action_written = {}
 
+zone_failed = {}
+
 
 run_program = True
 while run_program:
@@ -153,46 +157,52 @@ while run_program:
     actuate = start <= now <= end
 
     print("=============================================")
-    print("Acutation: %f with now to start: %f" % (int(actuate), (start - now).seconds))
+    print("Acutation: %f with now: %s" % (int(actuate), utils.get_datetime_to_string(now)))
 
     if actuate:
         ##### RUN
         for zone, tstat in tstats.items():
-            # if not zone_contain_classroom[zone]:
-            if True:
-                print("\n ------------- ")
-                print("Writing for zone %s" % zone)
-                heating_setpoint = tstat.heating_setpoint
-                cooling_setpoint = tstat.cooling_setpoint
+            try:
+                # if not zone_contain_classroom[zone]:
+                if True:
+                    print("\n ------------- ")
+                    print("Writing for zone %s" % zone)
+                    heating_setpoint = tstat.heating_setpoint
+                    cooling_setpoint = tstat.cooling_setpoint
 
-                # basically want to see if we can modify the setpoints.
-                if zone in last_cooling_action_written:
-                    last_written_cooling = last_cooling_action_written[zone]
-                else:
-                    last_cooling_action_written[zone] = None
-                    last_written_cooling = None
-
-                if last_written_cooling != cooling_setpoint:
-                    last_cooling_action_written[zone] = None
-                    last_written_cooling = None
-
-                # only if cooling setpoint is less than 80 we do something
-                if cooling_setpoint < 80 and last_written_cooling is None:
-                    new_cooling_setpoint = 4 + cooling_setpoint
-
-                    action_to_write = {"heating_setpoint": heating_setpoint, "cooling_setpoint": new_cooling_setpoint,
-                                       "override": True, "mode": 3}
-                    print("We are writing the following action: ", action_to_write)
-                    if not debug:
-                        writeTstat(tstat, action_to_write)
-
-                    last_cooling_action_written[zone] = new_cooling_setpoint
-                else:
-                    if last_written_cooling is None:
-                        float_last_written_cooling = -1
+                    # basically want to see if we can modify the setpoints.
+                    if zone in last_cooling_action_written:
+                        last_written_cooling = last_cooling_action_written[zone]
                     else:
-                        float_last_written_cooling = last_written_cooling
-                    print("No action to write for this zone because cooling setpoint is %f while the last written setpoint is %f" % (cooling_setpoint, float_last_written_cooling))
+                        last_cooling_action_written[zone] = None
+                        last_written_cooling = None
+
+                    if last_written_cooling != cooling_setpoint:
+                        last_cooling_action_written[zone] = None
+                        last_written_cooling = None
+
+                    # only if cooling setpoint is less than 80 we do something
+                    if cooling_setpoint < 80 and last_written_cooling is None:
+                        new_cooling_setpoint = 4 + cooling_setpoint
+
+                        action_to_write = {"heating_setpoint": heating_setpoint, "cooling_setpoint": new_cooling_setpoint,
+                                           "override": True, "mode": 3}
+                        print("We are writing the following action: ", action_to_write)
+                        if not debug:
+                            writeTstat(tstat, action_to_write)
+
+                        last_cooling_action_written[zone] = new_cooling_setpoint
+                    else:
+                        # if last_written_cooling is None:
+                        #     float_last_written_cooling = -1
+                        # else:
+                        #     float_last_written_cooling = last_written_cooling
+                        print("No action to write for this zone because cooling setpoint is %f while the last written setpoint is %s" % (cooling_setpoint, str(last_written_cooling)))
+
+                zone_failed[zone] = False
+            except:
+                print("Zone %s had an exception in writing cooling/heating." % zone)
+                zone_failed[zone] = True
 
         # wait to let the setpoints get through
         time.sleep(30)
@@ -200,23 +210,35 @@ while run_program:
         print("\n ++++++ Setting override to false so we can get the schedule from the buildings later. ++++++")
         # wait for a couple of seconds to let the setpoints get set and then set override to false
         for zone, tstat in tstats.items():
-            # if not zone_contain_classroom[zone]:
-            if True:
-                if not debug:
-                    writeTstat(tstat, PROGRAMMABLE)
+            try:
+                # if not zone_contain_classroom[zone]:
+                if True:
+                    if not debug:
+                        writeTstat(tstat, PROGRAMMABLE)
+                zone_failed[zone] = False
+            except:
+                print("Zone %s had an exception in writing override." % zone)
+                zone_failed[zone] = True
+
 
 
 
     # Printing the data for every tstat
     for zone, tstat in tstats.items():
-        print("")
-        print("Checking zone:", zone)
-        print("Checking zone uri:", tstat._uri)
-        printTstat(tstat)
-        print("Done checking zone", zone)
-        print("")
+        try:
+            print("")
+            print("Checking zone:", zone)
+            print("Checking zone uri:", tstat._uri)
+            printTstat(tstat)
+            print("Done checking zone", zone)
+            print("")
+            zone_failed[zone] = False
+        except:
+            print("Zone %s had an exception in reading." % zone)
+            zone_failed[zone] = True
 
-    WAIT_MINUTES = 1
+
+    WAIT_MINUTES = 15
 
     # wait for next iteration
     wait_time = WAIT_MINUTES * 60 - (time.time() - iteration_start)
@@ -244,5 +266,11 @@ while run_program:
 for zone, tstat in tstats.items():
     # if not zone_contain_classroom[zone]:
     if True:
-        if not debug:
-            writeTstat(tstat, PROGRAMMABLE)
+        try:
+            if not debug:
+                writeTstat(tstat, PROGRAMMABLE)
+            zone_failed[zone] = False
+
+        except:
+            print("Zone %s had an exception in writing override." % zone)
+            zone_failed[zone] = True

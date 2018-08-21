@@ -27,7 +27,7 @@ thermostat_query = """SELECT ?zone ?uri FROM  %s WHERE {
 #Preset of some actions
 COOLING_ACTION = {"heating_setpoint": 65, "cooling_setpoint": 68, "override": True, "mode": 3}
 HEATING_ACTION = {"heating_setpoint": 70, "cooling_setpoint": 75, "override": True, "mode": 3}
-NO_ACTION = {"heating_setpoint": 66, "cooling_setpoint": 73, "override": True, "mode": 3}
+NO_ACTION = {"heating_setpoint": 65, "cooling_setpoint": 77, "override": True, "mode": 3}
 PROGRAMMABLE = {"override": False}
 
 #Setter
@@ -79,7 +79,7 @@ cfg_building = utils.get_config(BUILDING)
 # time.sleep(wait_seconds)
 
 # Getting clients
-client = utils.choose_client(cfg_building)
+client = utils.choose_client()
 hc = HodClient("xbos/hod", client)
 
 print("================================================")
@@ -109,7 +109,8 @@ end = now.replace(hour=18, minute=0, second=0, microsecond=0)
 
 actuated_once = False
 
-run_program = True
+
+run_program = now < end
 while run_program:
     iteration_start = time.time()
 
@@ -118,7 +119,7 @@ while run_program:
     actuate = (start <= now <= end) and (not actuated_once)
 
     print("=============================================")
-    print("Acutation: %f with now to start: %f" % (int(actuate), (start - now).seconds))
+    print("Acutation: %f with now: %s" % (int(actuate), utils.get_datetime_to_string(now)))
 
     if actuate:
         ##### RUN

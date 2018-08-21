@@ -109,11 +109,11 @@ class IteratedDP:
                          # TODO Only using config file occupancy for now.
                          safety_constraints)
 
-            action = adv.advise()
+            actions = adv.advise()
 
             # # TODO make adv.get_consumption return a dictionary of consumption for each zone.
             # zone_consumption = adv.get_consumption()
             # consumption_storage.update_zone_consumption(zones, {zones[0]: zone_consumption})
 
         # return the last action we got
-        return action
+        return actions , None

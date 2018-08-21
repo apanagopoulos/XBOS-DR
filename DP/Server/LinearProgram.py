@@ -1,12 +1,13 @@
 import datetime
-import numpy as np
-import threading
 import json
+import threading
 from collections import defaultdict
-import pytz
+import time
 
 # Linear program solver.
 import gurobipy
+import numpy as np
+import pytz
 
 import utils
 
@@ -41,22 +42,18 @@ class AdviseLinearProgram:
 
         # set threads
         self.num_threads = num_threads
-        # Initialize the barrier to wait for all zones to get together
-        self.barrier = utils.Barrier(num_threads)
-        # Get mutex to block other threads from running
-        self.mutex = threading.Semaphore(1)
-
-        # initalize all temperatures variable for the linear program. Will be reset after every run of linear program.
-        self.all_zone_temperatures = {}
-        # helper variable which will be used in start_linear_program function. If the run_linear_program has happened
-        # it will be set to True, and reset to False only for most of the duration of the run_linear_program
-        self.ran_linear_program = False
 
         # shared variable to get the data of the last linear_program_optimization
         self.last_lp_data = defaultdict(lambda: defaultdict(dict))
 
+        # set the datamangers for all possible zones for the given building
+        self.data_managers_zones = utils.get_zone_data_managers(building, utils.get_zones(building), None, client)
+
     def advise(self, start, end, zones, cfg_building, cfg_zones, thermal_models,
-                    zone_starting_temperatures, consumption_storage):
+               zone_starting_temperatures, consumption_storage):
+
+        # reset the last_lp_data
+        self.last_lp_data = defaultdict(lambda: defaultdict(dict))
 
         # TODO fix end How are we gonna work with end and start here ? Just get the longest interval or what
         start_utc = start.astimezone(tz=pytz.utc)
@@ -66,52 +63,43 @@ class AdviseLinearProgram:
         start_cfg_timezone = start_utc.astimezone(tz=utils.get_config_timezone(cfg_building))
         end_cfg_timezone = end_utc.astimezone(tz=utils.get_config_timezone(cfg_building))
 
-        # Actions to perform berfore linear program optimization
-        self.mutex.acquire()
-        self.ran_linear_program = False
-        # all zones will now populate the all_temperatures variable at once.
-        for zone in zones:
-            self.all_zone_temperatures[zone] = zone_starting_temperatures[zone]
-        self.mutex.release()
-
-        # waiting for all zones to finish updating temperatures
-        self.barrier.wait()
-
         # For thermal model need to set weather predictions for every loop and set current zone temperatures.
         for zone, zone_thermal_model in thermal_models.items():
-            zone_thermal_model.set_temperatures(self.all_zone_temperatures)
+            zone_thermal_model.set_temperatures(zone_starting_temperatures)
             # FIX OUTSIDE DATA
             zone_thermal_model.set_outside_temperature(None)
 
-        # Only one zone will get to run the linear program
-        self.mutex.acquire()
-        if not self.ran_linear_program:
-            # Initialize Linear Program
-            linear_program = LinearProgram(building=self.building, zones=zones, start=start_cfg_timezone, end=end_cfg_timezone,
-                                           starting_zone_temperatures=self.all_zone_temperatures,
-                                           debug=self.debug)
-            # TODO following functions should be called in optimize i guess?
-            # set linear Program parameters
-            linear_program.set_inside_temperature()
-            linear_program.set_discomfort()
-            linear_program.set_objective_function()
-            # Run optimizatoin
-            linear_program.lp_solver.optimize()
-            # TODO set shared linear program variable accordingly.
-            # set the variables into a data dictionary
-            for v in linear_program.lp_solver.getVars():
-                var_dict = from_var(v.varName)
-                var_type, var_zone, var_time = var_dict["var_type"], var_dict["zone"], var_dict["time_step"]
-                var_value = v.x
-                # set the variable information in our data container.
-                self.last_lp_data[var_zone][var_time][var_type] = var_value
+        # get datamangers to use
+        data_managers_to_use = {}
+        for iter_zone, data_manager in self.data_managers_zones.items():
+            if iter_zone in zones:
+                data_managers_to_use[iter_zone] = data_manager
 
-            self.ran_linear_program = True
+        # Initialize Linear Program
+        linear_program = LinearProgram(building=self.building, zones=zones, start=start_cfg_timezone,
+                                       end=end_cfg_timezone,
+                                       starting_zone_temperatures=zone_starting_temperatures,
+                                       data_managers=data_managers_to_use,
+                                       debug=self.debug)
+        # TODO following functions should be called in optimize i guess?
+        # set linear Program parameters
+        linear_program.set_inside_temperature()
+        linear_program.set_discomfort()
+        linear_program.set_objective_function()
 
-            if self.debug:
-                print("The lp data: %s" % str(self.last_lp_data))
-        self.mutex.release()
+        # Run optimization
+        linear_program.lp_solver.optimize()
+        # TODO set shared linear program variable accordingly.
+        # set the variables into a data dictionary
+        for v in linear_program.lp_solver.getVars():
+            var_dict = from_var(v.varName)
+            var_type, var_zone, var_time = var_dict["var_type"], var_dict["zone"], var_dict["time_step"]
+            var_value = v.x
+            # set the variable information in our data container.
+            self.last_lp_data[var_zone][var_time][var_type] = var_value
 
+        if self.debug:
+            print("The lp data: %s" % str(self.last_lp_data))
 
         # get the first action to return for control
         advise_data = {}
@@ -121,7 +109,7 @@ class AdviseLinearProgram:
 
             if heating_action != 0 and cooling_action != 0:
                 raise Exception("ERROR: In the linear program optimization for zone %s one of the actions was not"
-                                "0. This may indicate no or negative energy prices or bug in the LP. "
+                                "0. This may indicate no or negative energy prices or a bug in the LP. "
                                 "Heating: %f, Cooling: %f." % (zone, heating_action, cooling_action))
 
             if heating_action > cooling_action:
@@ -131,18 +119,19 @@ class AdviseLinearProgram:
             else:
                 advise_data[zone] = utils.NO_ACTION
 
-        return advise_data
+        return advise_data, None
 
 
 class LinearProgram:
     """The linear porgram class."""
 
-    def __init__(self, building, zones, start, end, starting_zone_temperatures, debug=False):
+    def __init__(self, building, zones, start, end, starting_zone_temperatures, data_managers, debug=False):
         """
         
         :param building: (str) building name
         :param start: datetime timezone aware
         :param end: datetime timezone aware
+        :param data_managers: {zone: datamanager} To use for datamethods. 
         :param starting_zone_temperatures: {str zone: float temperature}
         """
         self.debug = debug
@@ -157,15 +146,22 @@ class LinearProgram:
         self.end = end
         self.num_timesteps = int((self.end - self.start).seconds // (self.interval * 60))
 
+        # set datamanagers
+        self.datamanager_zones = data_managers
+
         # TODO think if all times are properly synchronized. Especially with the num timesteps having too many too little steps.
         # TODO The util functions have end inclusive, but that gives too many intervals.
         # set all data matrices besides thermal model.
         # All are {zone: pd.df with respective columns but same timeseries}
-        self.lambda_cost_discomfort = utils.get_lambda_matrix(self.building, self.zones, self.start, self.end, self.interval)
-        self.occupancy = utils.get_occupancy_matrix(self.building, self.zones, self.start, self.end, self.interval)
-        self.comfortband = utils.get_comfortband_matrix(self.building, self.zones, self.start, self.end, self.interval)
+        self.lambda_cost_discomfort = utils.get_lambda_matrix(self.building, self.zones, self.start, self.end,
+                                                              self.interval, self.datamanager_zones)
+        self.occupancy = utils.get_occupancy_matrix(self.building, self.zones, self.start, self.end, self.interval,
+                                                    self.datamanager_zones)
+        self.comfortband = utils.get_comfortband_matrix(self.building, self.zones, self.start, self.end, self.interval,
+                                                        self.datamanager_zones)
         # TODO add Safety contraints to the linear program. Simply add them in the temperature variables for LP.
-        self.prices = utils.get_price_matrix(self.building, self.zones, self.start, self.end, self.interval)
+        self.prices = utils.get_price_matrix(self.building, self.zones, self.start, self.end, self.interval,
+                                             self.datamanager_zones)
         # TODO Add outside temperatures. For now we will work with a constant thermal model.
 
         # Two stage should be somewhat easy to extend to by allowing a higher power. Depends on 2 stage logic though.
@@ -291,14 +287,19 @@ class LinearProgram:
 
 
 if __name__ == "__main__":
+    import time
+
+    s_time = time.time()
     BUILDING = "ciee"
     ZONES = utils.get_zones(BUILDING)
     start = utils.get_utc_now()
     end = start + datetime.timedelta(hours=4)
-    lp = LinearProgram(BUILDING, start, end, {zone: 70 for zone in ZONES}, debug=True)
+    lp = LinearProgram(BUILDING, ZONES, start, end, {zone: 70 for zone in ZONES}, debug=True)
     lp.set_inside_temperature()
     lp.set_discomfort()
     lp.set_objective_function()
     lp.lp_solver.optimize()
     for v in lp.lp_solver.getVars():
         print(v.varName, v.x)
+
+    print(time.time() - s_time)

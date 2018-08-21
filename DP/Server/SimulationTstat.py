@@ -48,16 +48,15 @@ class SimulationTstat:
 
 
 
-    def next_temperature(self, debug=False):
+    def next_temperature(self, action, debug=False):
         """Needs to be called before using the next temperature. 
         Predicts for the given action and adds noise as given by the guassian distribution from the error
         of the thermal model. Also, updates the time_step by one so we know how often we have predicted.
         NOTE: Assumes that mpc_thermal_model has the outside temperatures it used to predict in Advise and the last
         action the Advise predicted as the optimal action.
+        :param action: (int) the action to use according to constants set in utils.py
         :param debug: boolean, whether to return more infromation for debugging. such as returning the noise as well.
         :return int, the current temperature."""
-        # inferring the last action from the mpc_thermal_model.
-        action = self.mpc_thermal_model.last_action
 
         # Make sure we trained the gaussian
         try:
