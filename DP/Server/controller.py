@@ -119,7 +119,7 @@ def hvac_control(cfg_building, cfg_zones, tstats, thermal_model, zones, building
         if msg is not None:
             for i in range(cfg_zone["Advise"]["Thermostat_Write_Tries"]):
                 try:
-                    if actuate_zones[iter_zone] and not debug:
+                    if actuate_zones[iter_zone]:
                         tstat.write(msg)
 
                     succeeded_zones[iter_zone] = True
@@ -301,8 +301,9 @@ class ZoneThread(threading.Thread):
             # the program for the given zone.
             actuate_zones = {iter_zone: (start_end[0] <= now_cfg_timezone <= start_end[1])
                                         and (not self.simulate)
-                                        and not stop_program_zone[iter_zone] for
-                             iter_zone, start_end in actuation_start_end_cfg_tz.items()}
+                                        and not stop_program_zone[iter_zone]
+                                        and not debug
+                             for iter_zone, start_end in actuation_start_end_cfg_tz.items()}
 
             # Keeps track of which zones where the optimization and normal schedule worked (weather for simulation or
             # normal acutation).
@@ -344,7 +345,7 @@ class ZoneThread(threading.Thread):
             # self.mutex.release()
 
             # TODO MASSIVE. FIND DR LAMBDA AND EXPANSION THAT WILL BE USED FOR THE LOGGER.
-            if any(actuate_zones.values()) or self.simulate:
+            if any(actuate_zones.values()) or self.simulate or self.debug:
 
                 # Flag whether to run MPC.
                 run_mpc_zones = {iter_zone: cfg_zone["Advise"]["MPC"] for iter_zone, cfg_zone in cfg_zones.items()}
@@ -384,9 +385,9 @@ class ZoneThread(threading.Thread):
                         # Increment the counter and set the flag for the normal schedule if the MPC failed too often.
                         # Add one since we tried once and didn't succeed.
                         for iter_zone, iter_zone_succeeded in succeeded_zones.items():
-                            if not iter_zone_succeeded:
+                            if not iter_zone_succeeded and not did_succeed_zones[iter_zone]:
                                 try_count_zones[iter_zone] += 1
-                            else:
+                            elif iter_zone_succeeded and not did_succeed_zones[iter_zone]:
                                 # If succeeded then we actuated and don't need to actuate any more.
                                 # Also, set setpoints that were executed.
                                 message_data_zones[iter_zone] = action_data[iter_zone]
@@ -445,9 +446,11 @@ class ZoneThread(threading.Thread):
                                                                           actuate_zones=should_actuate_zones_schedule,
                                                                           optimizer=self.normal_schedule, client=self.client)
 
+                    # TODO Fix this up right here...
                     if all(normal_schedule_succeeded.values()):
-                        for iter_zone in self.zones:
-                            message_data_zones[iter_zone] = action_data[iter_zone]
+                        for iter_zone, should_actuate_zone in should_actuate_zones_schedule.items():
+                            if should_actuate_zone:
+                                message_data_zones[iter_zone] = action_data[iter_zone]
 
                             # # Log this action.
                             # if normal_schedule_succeeded:
@@ -471,11 +474,11 @@ class ZoneThread(threading.Thread):
                             #           "Returning control to Thermostats. \n" % self.zone)
                             #     break
 
-            # infer actions from setpoints set.
-            action_data_zones = {iter_zone: get_action_from_setpoints(cfg_zones[iter_zone],
-                                                                      message_data_zones[iter_zone],
-                                                                      self.tstats[iter_zone].temperature)
-                                 for iter_zone in self.zones}
+                # infer actions from setpoints set.
+                action_data_zones = {iter_zone: get_action_from_setpoints(cfg_zones[iter_zone],
+                                                                          message_data_zones[iter_zone],
+                                                                          self.tstats[iter_zone].temperature)
+                                     for iter_zone in self.zones}
 
             print(
                 "This process is for building %s" % cfg_building[
@@ -540,7 +543,7 @@ class ZoneThread(threading.Thread):
                     # end program if setpoints have been changed. (If not writing to tstat we don't want this)
                     if action_data_zone is not None and utils.has_setpoint_changed(self.tstats[iter_zone],
                                                                                    action_data_zone,
-                                                                                   iter_zone, self.building):
+                                                                                   iter_zone):
                         # Tell the logger to record this setpoint change.
                         MPCLogger.mpc_log(self.building, iter_zone, utils.get_utc_now(),
                                           float(cfg_building["Interval_Length"]),

@@ -883,7 +883,7 @@ def get_data_matrix(building, zones, start, end, interval, data_type, datamanage
 # ============ THERMOSTAT FUNCTIONS ============
 
 
-def has_setpoint_changed(tstat, setpoint_data, zone, building):
+def has_setpoint_changed(tstat, setpoint_data, zone):
     """
     Checks if thermostats was manually changed and prints warning.
     :param tstat: Tstat object we want to look at.
