@@ -1,14 +1,12 @@
 import datetime
 import json
-import os
 from datetime import timedelta
 
-import pandas as pd
 import numpy as np
+import os
+import pandas as pd
 import pytz
 import requests
-import yaml
-from xbos import get_client
 from xbos.services import mdal
 from xbos.services.hod import HodClient
 
@@ -55,7 +53,7 @@ class DataManager:
         # TODO maybe get self.zone from config file.
         self.controller_cfg = controller_cfg
         self.advise_cfg = advise_cfg
-        self.pytz_timezone = controller_cfg["Pytz_Timezone"]
+        self.pytz_timezone = pytz.timezone(controller_cfg["Pytz_Timezone"])
         self.zone = zone
         self.interval = controller_cfg["Interval_Length"]
         if now is None:
@@ -180,7 +178,6 @@ class DataManager:
 
         return df
 
-
     def get_better_occupancy_config(self, date, freq="1T"):
         """
         Gets the occupancy from the zone configuration file. Uses the provided date for which the prices should
@@ -218,83 +215,151 @@ class DataManager:
             df_occupancy.loc[start:end, "occ"] = float(occ)
         return df_occupancy
 
-
-    def weather_fetch(self, start=None, fetch_attempts=10):
+    def weather_fetch(self, start, end, interval, fetch_attempts=10):
         """Gets the weather predictions from weather.gov
-        :param start: (utc datetime) when in the future the predictions should start
+        :param start: (datetime timezone_aware) when in the future the predictions should start
+        :param end: (datetime timezone_aware) when the weather fetch should end
+        :param interval: frequency of data in minutes. 
         :param fetch_attempts: (int) number of attempts we should try to get weather from weather.gov
-        :return {(datetime.local coordinate time. Should be config timezone): float outside temperature}"""
-        # In UTC time.
+        :return pd.series with date range from start to end in freq=interval minutes"""
         from dateutil import parser
-        if start is None:
-            start = self.now
 
-        file_name = "./weather/weather_" + self.zone + "_" + self.controller_cfg["Building"] + ".json"
+        def interpolate_to_start_end_range(data, start, end, interval):
+            """
+            Returns data but indexed with start to end in frequency of interval minutes. Interpolate the data when
+            needed. 
+            :param data: pd.series/pd.df has to have time series index which can contain a span from start to end.
+            :param start: the start of the data we want
+            :param end: the end of the data we want
+            :return: data but with index of pd.date_range(start, end, interval=15min)
+            """
+            # https://stackoverflow.com/questions/40034040/pandas-timeseries-resampling-and-interpolating-together
+            date_range = pd.date_range(start, end, freq=str(interval)+"T")
+            return data.reindex(date_range.union(data.index)).interpolate().loc[date_range]
 
-        coordinates = self.controller_cfg["Coordinates"]
+        now = utils.get_utc_now()
+        now_cfg_timezone = now.astimezone(tz=self.pytz_timezone)
 
-        weather_fetch_successful = False
-        while not weather_fetch_successful and fetch_attempts > 0:
-            if not os.path.exists(file_name):
-                temp = requests.get("https://api.weather.gov/points/" + coordinates).json()
-                weather = requests.get(temp["properties"]["forecastHourly"])
-                data = weather.json()
-                with open(file_name, 'wb') as f:
-                    json.dump(data, f)
+        start_cfg_tz = start.astimezone(tz=self.pytz_timezone)
+        end_cfg_tz = end.astimezone(tz=self.pytz_timezone)
 
+        # we should get about 6 days of data with each weather fetch i think.
+        assert start_cfg_tz <= end_cfg_tz <= now + datetime.timedelta(days=6)
+
+        # Try to get data from weather data that was saved.
+        file_name = "./weather/weather_" + self.zone + "_" + self.controller_cfg["Building"] + ".pkl"
+        if os.path.exists(file_name):
             try:
-                with open(file_name, 'r') as f:
-                    myweather = json.load(f)
-                    weather_fetch_successful = True
+                weather_data = pd.read_pickle(file_name)
+                # Checking if the start and end times are in the data range and also ensuring that our data is not more
+                # than a day old.
+                if weather_data.index[0] <= start_cfg_tz <= end_cfg_tz <= weather_data.index[-1] \
+                        and weather_data.index[0] <= now_cfg_timezone + datetime.timedelta(days=1):
+                    return interpolate_to_start_end_range(weather_data, start_cfg_tz, end_cfg_tz, interval)
             except:
-                # Error with reading json file. Refetching data.
-                print("Warning, received bad weather.json file. Refetching from archiver.")
                 os.remove(file_name)
-                weather_fetch_successful = False
-                fetch_attempts -= 1
 
-        if fetch_attempts == 0:
+
+        # attempt to fetch weather from weather.gove
+        try_counter = 0
+        weather_fetch_successful = False
+        coordinates = self.controller_cfg["Coordinates"]
+        while not weather_fetch_successful and try_counter <= fetch_attempts:
+            try:
+                weather_meta = requests.get("https://api.weather.gov/points/" + coordinates).json()
+                weather_json = requests.get(weather_meta["properties"]["forecastHourly"])
+                weather_data_dictionary = weather_json.json()
+
+                weather_fetch_successful = True
+            except:
+                try_counter += 1
+        # If we couldn't get data, then we need to raise an exception.
+        if not weather_fetch_successful:
             raise Exception("ERROR, Could not get good data from weather service.")
 
-        # got an error on parse in the next line that properties doesnt exit
-        json_start = parser.parse(myweather["properties"]["periods"][0]["startTime"])
-        if (json_start.hour < start.astimezone(tz=pytz.timezone(self.pytz_timezone)).hour) or \
-                (datetime.datetime(json_start.year, json_start.month, json_start.day).replace(
-                    tzinfo=pytz.timezone(self.pytz_timezone)) <
-                     datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC")).astimezone(
-                         tz=pytz.timezone(self.pytz_timezone))):
-            temp = requests.get("https://api.weather.gov/points/" + coordinates).json()
-            weather = requests.get(temp["properties"]["forecastHourly"])
-            data = weather.json()
-            with open(file_name, 'w') as f:
-                json.dump(data, f)
-            myweather = json.load(open(file_name))
+        # convert the data to a pandas Series.
+        weather_times = []
+        weather_temperatures = []
+        weather_temperature_unit = []
+        for row in weather_data_dictionary["properties"]["periods"]:
+            weather_times.append(parser.parse(row["startTime"]))
+            weather_temperatures.append(row["temperature"])
+            weather_temperature_unit.append(row["temperatureUnit"])
+            if weather_temperature_unit[-1] != "F":
+                raise Exception(
+                    "Weather fetch got data which was not Fahrenheit. It had units: %s" % weather_temperature_unit[-1])
 
-        weather_predictions = {}
+        weather_data = pd.Series(data=weather_temperatures, index=weather_times)
 
-        horizon_counter = 0
-        data_counter = 0
-        while horizon_counter <= self.horizon and data_counter < len(myweather["properties"]["periods"]):
-            data = myweather["properties"]["periods"][data_counter]
-            data_counter += 1
-            # The times are converted to UTC because we get timezone aware times from weather.gov.
-            start_datetime = parser.parse(data["startTime"]).astimezone(
-                         tz=pytz.timezone("UTC"))
-            end_datetime = parser.parse(data["endTime"]).astimezone(
-                         tz=pytz.timezone("UTC"))
+        # store the data
+        weather_data.to_pickle(file_name)
 
-            # If the start time for which we need weather predictions is before the end time, then we are
-            # either in the weather interval, or it is in the future (as desired for forecasting).
-            if start <= end_datetime:
-                start_datetime_datamanger_timezone = start_datetime.astimezone(tz=pytz.timezone(self.pytz_timezone))
-                weather_predictions[start_datetime_datamanger_timezone.hour] = int(data["temperature"])
-                horizon_counter += 1
+        # interpolate data to have start-end index.
+        print(interpolate_to_start_end_range(weather_data, start_cfg_tz, end_cfg_tz, interval))
 
-        # make sure we got enough data.
-        # e.g. If horizon is 1 hour then we need two data points (current and next hours temperature).
-        assert len(weather_predictions.keys()) == self.horizon + 1
 
-        return weather_predictions
+
+        # while not weather_fetch_successful and fetch_attempts > 0:
+        #     if not os.path.exists(file_name):
+        #         temp = requests.get("https://api.weather.gov/points/" + coordinates).json()
+        #         weather = requests.get(temp["properties"]["forecastHourly"])
+        #         data = weather.json()
+        #         with open(file_name, 'wb') as f:
+        #             json.dump(data, f)
+        #
+        #     try:
+        #         with open(file_name, 'r') as f:
+        #             myweather = json.load(f)
+        #             weather_fetch_successful = True
+        #     except:
+        #         # Error with reading json file. Refetching data.
+        #         print("Warning, received bad weather.json file. Refetching from archiver.")
+        #         os.remove(file_name)
+        #         weather_fetch_successful = False
+        #         fetch_attempts -= 1
+        #
+        # if fetch_attempts == 0:
+        #     raise Exception("ERROR, Could not get good data from weather service.")
+        #
+        # # got an error on parse in the next line that properties doesnt exit
+        # json_start = parser.parse(myweather["properties"]["periods"][0]["startTime"])
+        # if (json_start.hour < start.astimezone(tz=pytz.timezone(self.pytz_timezone)).hour) or \
+        #         (datetime.datetime(json_start.year, json_start.month, json_start.day).replace(
+        #             tzinfo=self.pytz_timezone) <
+        #              datetime.datetime.utcnow().replace(tzinfo=pytz.timezone("UTC")).astimezone(
+        #                  self.pytz_timezone)):
+        #     temp = requests.get("https://api.weather.gov/points/" + coordinates).json()
+        #     weather = requests.get(temp["properties"]["forecastHourly"])
+        #     data = weather.json()
+        #     with open(file_name, 'w') as f:
+        #         json.dump(data, f)
+        #     myweather = json.load(open(file_name))
+        #
+        # weather_predictions = {}
+        #
+        # horizon_counter = 0
+        # data_counter = 0
+        # while horizon_counter <= self.horizon and data_counter < len(myweather["properties"]["periods"]):
+        #     data = myweather["properties"]["periods"][data_counter]
+        #     data_counter += 1
+        #     # The times are converted to UTC because we get timezone aware times from weather.gov.
+        #     start_datetime = parser.parse(data["startTime"]).astimezone(
+        #         tz=pytz.timezone("UTC"))
+        #     end_datetime = parser.parse(data["endTime"]).astimezone(
+        #         tz=pytz.timezone("UTC"))
+        #
+        #     # If the start time for which we need weather predictions is before the end time, then we are
+        #     # either in the weather interval, or it is in the future (as desired for forecasting).
+        #     if start <= end_datetime:
+        #         start_datetime_datamanger_timezone = start_datetime.astimezone(tz=self.pytz_timezone)
+        #         weather_predictions[start_datetime_datamanger_timezone.hour] = int(data["temperature"])
+        #         horizon_counter += 1
+        #
+        # # make sure we got enough data.
+        # # e.g. If horizon is 1 hour then we need two data points (current and next hour's temperature).
+        # assert len(weather_predictions.keys()) == self.horizon + 1
+        #
+        # return weather_predictions
 
     def thermostat_setpoints(self, start, end, window_size=1):
         """
@@ -327,9 +392,7 @@ class DataManager:
                     ?setpoint bf:uuid ?uuid.
                     };"""
 
-
         hod_client = HodClient("xbos/hod", self.c)
-
 
         # get query data
         temp_thermostat_query_data = {
@@ -350,13 +413,12 @@ class DataManager:
         mdal_client = mdal.MDALClient("xbos/mdal", client=self.c)
         zone_setpoint_data = {}
         for zone, dict in thermostat_query_data.items():
-
             mdal_query = {'Composition': [dict["heating_setpoint"], dict["cooling_setpoint"]],
-                                        'Selectors': [mdal.MEAN, mdal.MEAN]
-                                           , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                                      'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                                      'WindowSize': str(window_size) + 'min',
-                                                      'Aligned': True}}
+                          'Selectors': [mdal.MEAN, mdal.MEAN]
+                , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                           'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                           'WindowSize': str(window_size) + 'min',
+                           'Aligned': True}}
 
             # get the thermostat data
             df = utils.get_mdal_data(mdal_client, mdal_query)
@@ -421,7 +483,6 @@ class DataManager:
 
         price_array = self.controller_cfg["Pricing"][self.controller_cfg["Pricing"]["Energy_Rates"]]
 
-
         if self.controller_cfg["Pricing"]["Energy_Rates"] == "Server":
             # not implemented yet, needs fixing from the archiver
             # (always says 0, problem unless energy its free and noone informed me)
@@ -446,7 +507,6 @@ class DataManager:
             start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
             end_date = start_date + datetime.timedelta(days=1)
             date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
-
 
             # create nan filled dataframe and then populate it
             df_prices = pd.DataFrame(columns=["price"], index=date_range)
@@ -609,7 +669,6 @@ class DataManager:
 
         weekday = date.weekday()
 
-
         date_setpoints = np.array(setpoints_array[weekday])
 
         start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -637,7 +696,6 @@ class DataManager:
 
         return df_setpoints
 
-
     def building_setpoints(self):
 
         setpoints_array = self.advise_cfg["Advise"]["Comfortband"]
@@ -651,7 +709,7 @@ class DataManager:
 
             for j in setpoints_array[weekday]:
                 if in_between(now_time.time(), getDatetime(j[0]), getDatetime(j[1])) and \
-                        (j[2] != "None" or j[3] != "None"): # TODO come up with better None value detection.
+                        (j[2] != "None" or j[3] != "None"):  # TODO come up with better None value detection.
                     setpoints.append([j[2], j[3]])
                     break
 
@@ -702,15 +760,14 @@ if __name__ == '__main__':
     cfg = utils.get_config(building)
     advise_cfg = utils.get_zone_config(building, zone)
 
-
-    # client = utils.choose_client()
+    client = utils.choose_client()
 
     dm = DataManager(cfg, advise_cfg, None, "HVAC_Zone_Centralzone")
 
     start = utils.get_utc_now()
     end = start + datetime.timedelta(days=1)
 
-    print(dm.get_better_is_dr(start))
+    print(dm.weather_fetch(start, end, 15))
 
     # print "Weather Predictions:"
     # print dm.weather_fetch()

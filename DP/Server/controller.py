@@ -253,14 +253,10 @@ class ZoneThread(threading.Thread):
             try:
                 cfg_building = utils.get_config(self.building)
                 cfg_zones = {iter_zone: utils.get_zone_config(self.building, iter_zone) for iter_zone in self.zones}
-                # TODO uncomment once we shifted to multiple zones for one thread.
-                # cfg_zone = {}
-                # for iter_zone in self.zones:
-                #     cfg_zone[iter_zone] = utils.get_zone_config(self.building, iter_zone)
             except:
                 print "There is no " + str(self.zones) + ".yml file under Buildings/" + cfg_building[
                     "Building"] + "/ZoneConfigs/ folder."
-                return  # TODO MAKE THIS RUN NORMAL SCHEDULE SOMEHOW WHEN NO ZONE CONFIG EXISTS It will raise an error for now
+                break  # TODO MAKE THIS RUN NORMAL SCHEDULE SOMEHOW WHEN NO ZONE CONFIG EXISTS It will raise an error for now
 
             # Getting timezone from the config
             timezone_cfg = utils.get_config_timezone(cfg_building)
@@ -274,7 +270,6 @@ class ZoneThread(threading.Thread):
             # setting when the mpc/normal should start and end for actuation and simulation.
             for iter_zone, cfg_zone in cfg_zones.items():
                 if self.simulate:
-                    # TODO This should be replaced with getting this data from config files.
                     start_cfg_timezone = self.simulate_start_utc.astimezone(tz=timezone_cfg)
                     end_cfg_timezone = self.simulate_end_utc.astimezone(tz=timezone_cfg)
                 else:
@@ -284,9 +279,8 @@ class ZoneThread(threading.Thread):
                     start_cfg_timezone = utils.combine_date_time(start_cfg_string, now_cfg_timezone)
                     end_cfg_timezone = utils.combine_date_time(end_cfg_string, now_cfg_timezone)
 
-                # Edge case where the end time may be at midnight and hence start time > end time
-                if (start_cfg_timezone > end_cfg_timezone) and \
-                        (end_cfg_timezone.minute == 0 and end_cfg_timezone.hour == 0):
+                # Edge case where the end time may in the next day and hence start > end. We add a day to fix this.
+                if (start_cfg_timezone > end_cfg_timezone):
                     end_cfg_timezone += datetime.timedelta(days=1)
 
                 # add start and end times to actuation_start_end_cfg_tz.
@@ -344,7 +338,7 @@ class ZoneThread(threading.Thread):
             #     utils.actuate_lights(now_cfg_timezone, cfg_building, cfg_zone, self.zone, self.client)
             # self.mutex.release()
 
-            # TODO MASSIVE. FIND DR LAMBDA AND EXPANSION THAT WILL BE USED FOR THE LOGGER.
+            # TODO LOGGER.
             if any(actuate_zones.values()) or self.simulate or self.debug:
 
                 # Flag whether to run MPC.
@@ -446,7 +440,6 @@ class ZoneThread(threading.Thread):
                                                                           actuate_zones=should_actuate_zones_schedule,
                                                                           optimizer=self.normal_schedule, client=self.client)
 
-                    # TODO Fix this up right here...
                     if all(normal_schedule_succeeded.values()):
                         for iter_zone, should_actuate_zone in should_actuate_zones_schedule.items():
                             if should_actuate_zone:
