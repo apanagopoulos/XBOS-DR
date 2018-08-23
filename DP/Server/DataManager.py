@@ -479,7 +479,7 @@ class DataManager:
          datetime as provided by the configuration file. 
         """
         # Set the date to the controller timezone.
-        date = date.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
+        date = date.astimezone(tz=self.pytz_timezone)
 
         price_array = self.controller_cfg["Pricing"][self.controller_cfg["Pricing"]["Energy_Rates"]]
 
@@ -541,7 +541,7 @@ class DataManager:
          datetime as provided by the configuration file. 
         """
         # Set the date to the controller timezone.
-        date = date.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
+        date = date.astimezone(tz=self.pytz_timezone)
 
         # Get lambdas
         general_lambda = self.advise_cfg["Advise"]["General_Lambda"]
@@ -585,7 +585,7 @@ class DataManager:
          datetime as provided by the configuration file. 
         """
         # Set the date to the controller timezone.
-        date = date.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
+        date = date.astimezone(tz=self.pytz_timezone)
 
         # Get DR Data and whether to get DR prices.
         DR_start_time = utils.get_time_datetime(self.controller_cfg["Pricing"]["DR_Start"])
@@ -620,7 +620,7 @@ class DataManager:
          datetime as provided by the configuration file. 
         """
         # Set the date to the controller timezone.
-        date = date.astimezone(tz=pytz.timezone(self.pytz_timezone))
+        date = date.astimezone(tz=self.pytz_timezone)
 
         setpoints_array = self.advise_cfg["Advise"]["SafetySetpoints"]
 
@@ -662,7 +662,7 @@ class DataManager:
          datetime as provided by the configuration file. 
         """
         # Set the date to the controller timezone.
-        date = date.astimezone(tz=pytz.timezone(self.pytz_timezone))
+        date = date.astimezone(tz=self.pytz_timezone)
 
         setpoints_array = self.advise_cfg["Advise"]["Comfortband"]
         df_safety = self.get_better_safety(date, freq)
@@ -701,7 +701,7 @@ class DataManager:
         setpoints_array = self.advise_cfg["Advise"]["Comfortband"]
         safety_temperatures = self.advise_cfg["Advise"]["SafetySetpoints"]
 
-        now_time = self.now.astimezone(tz=pytz.timezone(self.controller_cfg["Pytz_Timezone"]))
+        now_time = self.now.astimezone(tz=self.pytz_timezone)
         setpoints = []
 
         while now_time <= self.now + timedelta(hours=self.horizon):

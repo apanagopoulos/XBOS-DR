@@ -174,8 +174,8 @@ class ZoneThread(threading.Thread):
         :param lp_optimizer: LP Optimizer class which is shared by all threads. 
         :param debug: Whether to actuate tstats.
         :param simulate: Bool whether to simulate.
-        :param simualate_start: (utc datetime) When the simulation should start
-        :param simulate_end: (utc datetime) When simulation should end.
+        :param simualate_start: (datetime timezone aware) When the simulation should start
+        :param simulate_end: (datetime timezone aware) When simulation should end.
         """
         threading.Thread.__init__(self)
         self.tstats = tstats
@@ -223,8 +223,8 @@ class ZoneThread(threading.Thread):
         self.simulate = simulate
         if simulate:
             # Make them utc aware if they are not already.
-            self.simulate_start_utc = simulate_start.replace(tzinfo=pytz.utc)
-            self.simulate_end_utc = simulate_end.replace(tzinfo=pytz.utc)
+            self.simulate_start_utc = simulate_start.astimezone(tz=pytz.utc)
+            self.simulate_end_utc = simulate_end.astimezone(tz=pytz.utc)
 
     def run(self):
         """
@@ -690,9 +690,11 @@ def main(building, optimization_type, simulate=False, debug=True, run_server=Tru
             simulation_results[tuple(t.zones)] = t.simulation_results
 
 
-if __name__ == '__main__':
-    # building, optimization_type, simulate=False, debug=True, run_server=True, start_simulation=None, end_simulation=None
-
+def ask_all_input():
+    """
+    Asks for all the necessary input from the user to run the MPC.
+    :return: building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation
+    """
     import os
     def ask_input(ask_name, option_list):
         print "-----------------------------------"
@@ -723,16 +725,20 @@ if __name__ == '__main__':
         minute_chosen = int(input("Minute: "))
         assert 0 <= minute_chosen <= 60
 
-        date_datetime = datetime.datetime(year=year_chosen, month=month_chosen, day=day_chosen, hour=hour_chosen, minute=minute_chosen)
+        date_datetime = datetime.datetime(year=year_chosen, month=month_chosen, day=day_chosen, hour=hour_chosen,
+                                          minute=minute_chosen)
 
         print "-----------------------------------"
         print "Date and time chosen: " + utils.get_datetime_to_string(date_datetime)
         print "-----------------------------------"
-        return datetime.datetime(year=year_chosen, month=month_chosen, day=day_chosen, hour=hour_chosen, minute=minute_chosen)
+        return datetime.datetime(year=year_chosen, month=month_chosen, day=day_chosen, hour=hour_chosen,
+                                 minute=minute_chosen)
 
     def ask_end_date(start_date):
         print "-----------------------------------"
-        hours_after_start = int(input("How many hours after the start of simulation %s should the end be: " % utils.get_datetime_to_string(start_date)))
+        hours_after_start = int(input(
+            "How many hours after the start of simulation %s should the end be: " % utils.get_datetime_to_string(
+                start_date)))
         end_date = start_date + datetime.timedelta(hours=hours_after_start)
         print "-----------------------------------"
         print "Date and time chosen:" + utils.get_datetime_to_string(end_date)
@@ -740,20 +746,44 @@ if __name__ == '__main__':
         return end_date
 
     building = ask_input("Building", os.walk(utils.SERVER_DIR_PATH + "/Buildings/").next()[1])
+    cfg_building = utils.get_config(building)
     optimization_type = ask_input("Optimization Type", ["DP", "LP"])
     simulate_string = ask_input("Should simulate", ["Yes", "No"])
     simulate = simulate_string == "Yes"
-    debug_string =  ask_input("Should debug", ["Yes", "No"])
+    debug_string = ask_input("Should debug", ["Yes", "No"])
     debug = debug_string == "Yes"
-    run_server_string =  ask_input("Should run on server", ["Yes", "No"])
+    run_server_string = ask_input("Should run on server", ["Yes", "No"])
     run_server = run_server_string == "Yes"
     if simulate:
         start_simulation = ask_date("start")
         end_simulation = ask_end_date(start_simulation)
+        cfg_timezone = pytz.timezone(cfg_building["Pytz_Timezone"])
+        start_simulation = cfg_timezone.localize(start_simulation)
+        end_simulation = cfg_timezone.localize(end_simulation)
     else:
         start_simulation = None
         end_simulation = None
 
+    return building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation
+
+if __name__ == '__main__':
+
+    # building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation = ask_all_input()
+
+
+    # DEBUG PURPOSES
+    building = "ciee"
+    optimization_type = "LP"
+    simulate = True
+    debug = True
+    run_server = False
+    start_simulation = datetime.datetime(year=2018, month=8, day=21, hour=10, minute=0)
+    end_simulation = start_simulation + datetime.timedelta(hours=4)
+
+    cfg_building = utils.get_config(building)
+    cfg_timezone = pytz.timezone(cfg_building["Pytz_Timezone"])
+    start_simulation = cfg_timezone.localize(start_simulation)
+    end_simulation = cfg_timezone.localize(end_simulation)
 
     result = main(building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation)
 
