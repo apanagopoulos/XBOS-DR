@@ -491,6 +491,23 @@ def as_pandas(result):
     return df
 
 
+def interpolate_to_start_end_range(data, start, end, interval):
+    """
+    Returns data but indexed with start to end in frequency of interval minutes. Interpolate the data when
+    needed. Interpolating should give a fine approximation. However, while the new intervals represent the mean 
+    temperatures of the time interval given, the mean of them throughout an hour will not necessarily be the
+    mean from which we started from. 
+    :param data: pd.series/pd.df has to have time series index which can contain a span from start to end.
+    :param start: the start of the data we want
+    :param end: the end of the data we want
+    :param interval: minutes for the interval
+    :return: data but with index of pd.date_range(start, end, interval)
+    """
+    # https://stackoverflow.com/questions/40034040/pandas-timeseries-resampling-and-interpolating-together
+    date_range = pd.date_range(start, end, freq=str(interval) + "T")
+    return data.reindex(date_range.union(data.index)).interpolate().loc[date_range]
+
+
 # TODO Finsih this up once i have more energy. Make it return a dataframe. I am not happy with this because
 # we are first downsampling the historic data and then interpolating again. Just overall needs an overhaul,
 # but for now it will suffice to implement simulations and linear program.
@@ -555,78 +572,30 @@ def get_outside_temperatures(building_config, start, end, data_manager, thermal_
         future_start_cfg_timezone = None
         future_end_cfg_timezone = None
 
-    # Populating the outside_temperatures dictionary for MPC use. Ouput is in cfg timezone.
-    outside_temperatures = {}
-    if future_start_utc is not None:
+    # Populating the outside_temperatures pd.Series for MPC use. Ouput is in cfg timezone.
+    outside_temperatures = pd.Series(index=pd.date_range(start_cfg_timezone, end_cfg_timezone, freq=str(interval)+"T"))
+    if future_start_cfg_timezone is not None:
         # TODO implement end for weather_fetch
-        future_weather = data_manager.weather_fetch(start=future_start_utc)
-        outside_temperatures = future_weather
+        future_weather = data_manager.weather_fetch(start=future_start_cfg_timezone, end=future_end_cfg_timezone, interval=interval)
+        outside_temperatures[future_start_cfg_timezone:future_end_cfg_timezone] = future_weather.values
 
     # Combining historic data with outside_temperatures correctly if exists.
-    if historic_start_utc is not None:
+    if historic_start_cfg_timezone is not None:
         historic_weather = thermal_data_manager._get_outside_data(historic_start_utc,
                                                                   historic_end_utc, inclusive=True)
-        historic_weather = thermal_data_manager._preprocess_outside_data(historic_weather.values())
+        historic_weather = thermal_data_manager._preprocess_outside_data(historic_weather.values()).squeeze()
 
-        # Down sample the historic weather to hourly entries, and take the mean for each hour.
-        historic_weather = historic_weather.groupby([pd.Grouper(freq="1H")])["t_out"].mean()
 
         # Convert historic_weather to cfg timezone.
         historic_weather.index = historic_weather.index.tz_convert(tz=building_config["Pytz_Timezone"])
 
-        # Popluate the outside_temperature array. If we have the simulation time in the past and future then
-        # we will take a weighted averege of the historic and future temperatures in the hour in which
-        # historic_end and future_start happen.
-        for row in historic_weather.iteritems():
-            row_time, t_out = row[0], row[1]
+        # Make sure historic weather has correct interval and start to end times.
+        historic_weather = interpolate_to_start_end_range(historic_weather,
+                                                          historic_start_cfg_timezone, historic_end_cfg_timezone,
+                                                          interval)
 
-            # taking a weighted average of the past and future outside temperature since for now
-            # we only have one outside temperature per hour.
-            if row_time.hour in outside_temperatures and \
-                            row_time.hour == historic_end_cfg_timezone.hour:
-
-                future_t_out = outside_temperatures[row_time.hour]
-
-                # Checking if start and end are in the same hour, because then we have to weigh the temperature by
-                # less.
-                if historic_end_cfg_timezone.hour == \
-                        historic_start_cfg_timezone.hour:
-                    historic_weight = (historic_end_cfg_timezone - historic_start_cfg_timezone).seconds // 60
-                else:
-                    historic_weight = historic_end_cfg_timezone.minute
-                if future_start_cfg_timezone.hour == \
-                        future_end_cfg_timezone.hour:
-                    future_weight = (future_end_cfg_timezone - future_start_cfg_timezone).seconds // 60
-                else:
-                    # the remainder of the hour.
-                    future_weight = 60 - future_start_cfg_timezone.minute
-                # Normalize
-                total_weight = future_weight + historic_weight
-                future_weight /= float(total_weight)
-                historic_weight /= float(total_weight)
-
-                outside_temperatures[row_time.hour] = future_weight * future_t_out + \
-                                                      historic_weight * float(t_out)
-
-            else:
-                outside_temperatures[row_time.hour] = float(t_out)
-
-    # The following takes the dictionary and returns a pd.Series with timeseries indexing from start to end in cfg timezone and
-    # frequency given by the interval parameter with interpolation of the data.
-    series_data = []
-    timeseries_index = pd.date_range(start_cfg_timezone, end_cfg_timezone, freq='60T')
-    # To get outside temperature data in the right order.
-    for iter_time in timeseries_index:
-        series_data.append(outside_temperatures[iter_time.hour])
-
-    outside_temperatures_series = pd.Series(data=series_data, index=timeseries_index)
-
-    # https: // stackoverflow.com / questions / 47148446 / pandas - resample - interpolate - is -producing - nans
-    timeseries_index_interval = timeseries_index = pd.date_range(start_cfg_timezone, end_cfg_timezone,
-                                                                 freq=str(interval) + 'T')
-
-    res = outside_temperatures_series.reindex(timeseries_index_interval).interpolate()
-    print(res)
+        # Populate outside data
+        outside_temperatures[historic_start_cfg_timezone:historic_end_cfg_timezone] = historic_weather.values
 
     return outside_temperatures
 
@@ -1303,7 +1272,23 @@ if __name__ == "__main__":
 
     curr_temp = 73
 
-    print(safety_check(zone_config, curr_temp, safety, cooling_setpoint, heating_setpoint))
+    start_simulation = datetime.datetime(year=2018, month=8, day=23, hour=10, minute=0)
+    end_simulation = start_simulation + datetime.timedelta(hours=4)
+
+    cfg_building = get_config(BUILDING)
+    cfg_timezone = pytz.timezone(cfg_building["Pytz_Timezone"])
+    start_simulation = cfg_timezone.localize(start_simulation)
+    end_simulation = cfg_timezone.localize(end_simulation)
+
+
+
+    data_manager = DataManager.DataManager(building_config, zone_config, get_client(), ZONE,
+                 now=None)
+
+    thermal_data_manager = ThermalDataManager.ThermalDataManager(building_config, get_client(), interval=5)
+
+    print(get_outside_temperatures(building_config, start_simulation, end_simulation, data_manager, thermal_data_manager, 15))
+    # print(safety_check(zone_config, curr_temp, safety, cooling_setpoint, heating_setpoint))
 
     # start = get_utc_now() + datetime.timedelta(hours=1)
     # end = start + datetime.timedelta(hours=7)

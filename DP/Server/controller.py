@@ -768,22 +768,22 @@ def ask_all_input():
 
 if __name__ == '__main__':
 
-    # building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation = ask_all_input()
+    building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation = ask_all_input()
 
 
-    # DEBUG PURPOSES
-    building = "ciee"
-    optimization_type = "LP"
-    simulate = True
-    debug = True
-    run_server = False
-    start_simulation = datetime.datetime(year=2018, month=8, day=21, hour=10, minute=0)
-    end_simulation = start_simulation + datetime.timedelta(hours=4)
-
-    cfg_building = utils.get_config(building)
-    cfg_timezone = pytz.timezone(cfg_building["Pytz_Timezone"])
-    start_simulation = cfg_timezone.localize(start_simulation)
-    end_simulation = cfg_timezone.localize(end_simulation)
+    # # DEBUG PURPOSES
+    # building = "ciee"
+    # optimization_type = "LP"
+    # simulate = True
+    # debug = True
+    # run_server = False
+    # start_simulation = datetime.datetime(year=2018, month=8, day=21, hour=10, minute=0)
+    # end_simulation = start_simulation + datetime.timedelta(hours=4)
+    #
+    # cfg_building = utils.get_config(building)
+    # cfg_timezone = pytz.timezone(cfg_building["Pytz_Timezone"])
+    # start_simulation = cfg_timezone.localize(start_simulation)
+    # end_simulation = cfg_timezone.localize(end_simulation)
 
     result = main(building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation)
 
