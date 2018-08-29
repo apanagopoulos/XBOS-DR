@@ -230,10 +230,6 @@ class ZoneThread(threading.Thread):
         """
         :return: 
         """
-        # TODO Rethink how to use the simulate now.
-        # TODO MPCLogger is using the current utc time, not the simulation time.
-
-
         starttime = time.time()
         action_data = None
 
@@ -291,6 +287,7 @@ class ZoneThread(threading.Thread):
                                             or stop_program_zone[iter_zone]
                                  for iter_zone, start_end in actuation_start_end_cfg_tz.items()}
 
+
             # check whether to actuate if there is no simulation happening. Don't actuate if we would like to stop
             # the program for the given zone.
             actuate_zones = {iter_zone: (start_end[0] <= now_cfg_timezone <= start_end[1])
@@ -338,7 +335,6 @@ class ZoneThread(threading.Thread):
             #     utils.actuate_lights(now_cfg_timezone, cfg_building, cfg_zone, self.zone, self.client)
             # self.mutex.release()
 
-            # TODO LOGGER.
             if any(actuate_zones.values()) or self.simulate or self.debug:
 
                 # Flag whether to run MPC.
@@ -399,7 +395,8 @@ class ZoneThread(threading.Thread):
                                     print("")
                                     self.mutex.release()
                                     run_mpc_zones[iter_zone] = False
-                                    # TODO if here, Add line in LOGGER output that MPC DIDN"T WORK HERE
+
+                            # Don't log failure, as it is implied when the Normal schedule logs its action.
 
                     # Log this action if succeeded.
                     if all(succeeded_zones.values()):
@@ -417,14 +414,13 @@ class ZoneThread(threading.Thread):
                             else:
                                 mpc_lambda = cfg_zone["Advise"]["General_Lambda"]
 
-                            # TODO update MPCLogger to multizones.
-                            MPCLogger.mpc_log(self.building, iter_zone, now_utc, float(cfg_building["Interval_Length"]),
+                            # Log when successful
+                            MPCLogger.mpc_log(self.building, iter_zone, now_cfg_timezone, float(cfg_building["Interval_Length"]),
                                               is_mpc=True,
                                               is_schedule=False,
                                               mpc_lambda=mpc_lambda, shut_down_system=False)
 
                 # Running the normal Schedule
-
                 if not all(run_mpc_zones.values()):
                     # Set a dictionary for zones that need to be actuated but have not yet been successful.
                     should_actuate_zones_schedule = {iter_zone: actuate_zones[iter_zone]
@@ -440,32 +436,42 @@ class ZoneThread(threading.Thread):
                                                                           actuate_zones=should_actuate_zones_schedule,
                                                                           optimizer=self.normal_schedule, client=self.client)
 
-                    if all(normal_schedule_succeeded.values()):
-                        for iter_zone, should_actuate_zone in should_actuate_zones_schedule.items():
+                    for iter_zone in self.zones:
+                        should_actuate_zone = should_actuate_zones_schedule[iter_zone]
+                        succeeded_zone = normal_schedule_succeeded[iter_zone]
+
+                        if succeeded_zone:
                             if should_actuate_zone:
                                 message_data_zones[iter_zone] = action_data[iter_zone]
 
-                            # # Log this action.
-                            # if normal_schedule_succeeded:
-                            #     MPCLogger.mpc_log(building, self.zone, now_utc, float(cfg_building["Interval_Length"]),
-                            #                       is_mpc=False,
-                            #                       is_schedule=True,
-                            #                       expansion=cfg["Advise"]["Baseline_Dr_Extend_Percent"],
-                            #                       shut_down_system=False)
-                            # else:
-                            #     # If normal schedule fails then we have big problems.
-                            #
-                            #     # Set the override to false for the thermostat so the local schedules can take over again.
-                            #     utils.set_override_false(tstat)
-                            #
-                            #     # Logging the shutdown.
-                            #     MPCLogger.mpc_log(self.building, self.zone, now_utc, float(cfg_building["Interval_Length"]),
-                            #                       is_mpc=False, is_schedule=False, shut_down_system=True,
-                            #                       system_shut_down_msg="Normal Schedule Failed")
-                            #
-                            #     print("System shutdown for zone %s, normal schedule has not succeeded. "
-                            #           "Returning control to Thermostats. \n" % self.zone)
-                            #     break
+                                # Do the log here
+                                is_dr = utils.is_DR(now_cfg_timezone, cfg_building)
+                                if is_dr:
+                                    schedule_expansion = 0
+                                else:
+                                    schedule_expansion = cfg_zones[iter_zone]["Advise"]["Baseline_Dr_Extend_Percent"]
+
+
+                            MPCLogger.mpc_log(self.building, iter_zone, now_cfg_timezone, float(cfg_building["Interval_Length"]),
+                                              is_mpc=False,
+                                              is_schedule=True,
+                                              expansion=schedule_expansion,
+                                              shut_down_system=False)
+                        else:
+                            # If normal schedule fails then we stop the zone and give control back to thermostat.
+
+                            # Logging the shutdown.
+                            MPCLogger.mpc_log(self.building, iter_zone, now_cfg_timezone, float(cfg_building["Interval_Length"]),
+                                              is_mpc=False, is_schedule=False, shut_down_system=True,
+                                              system_shut_down_msg="Normal Schedule Failed")
+
+                            # stop zone till the end of the program
+                            stop_program_zone[iter_zone] = True
+                            # Set override to false
+                            utils.set_override_false(self.tstats[iter_zone])
+
+
+
 
                 # infer actions from setpoints set.
                 action_data_zones = {iter_zone: get_action_from_setpoints(cfg_zones[iter_zone],
@@ -538,7 +544,7 @@ class ZoneThread(threading.Thread):
                                                                                    action_data_zone,
                                                                                    iter_zone):
                         # Tell the logger to record this setpoint change.
-                        MPCLogger.mpc_log(self.building, iter_zone, utils.get_utc_now(),
+                        MPCLogger.mpc_log(self.building, iter_zone, now_cfg_timezone,
                                           float(cfg_building["Interval_Length"]),
                                           is_mpc=False, is_schedule=False, shut_down_system=True,
                                           system_shut_down_msg="Manual Setpoint Change")
@@ -546,6 +552,8 @@ class ZoneThread(threading.Thread):
                         # Do not actuate the zone again till the end of the program
                         stop_program_zone[iter_zone] = True
 
+                        # Set override to false
+                        utils.set_override_false(self.tstats[iter_zone])
 
         # if actuate:
         #     # TODO FIX THE UPDATE STEP.
