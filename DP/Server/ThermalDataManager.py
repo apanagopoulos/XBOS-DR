@@ -70,7 +70,6 @@ class ThermalDataManager:
         return final_outside_data
 
     def _get_outside_data(self, start=None, end=None, inclusive=False):
-        # TODO update docstring
         """Get outside temperature for thermal model.
         :param start: (datetime) time to start. in UTC time.
         :param end: (datetime) time to end. in UTC time.
@@ -89,7 +88,6 @@ class ThermalDataManager:
                                     };"""
 
         # get outside temperature data
-        # TODO UPDATE OUTSIDE TEMPERATURE STUFF
         # TODO for now taking all weather stations and preprocessing it. Should be determined based on metadata.
         outside_temperature_query_data = self.hod_client.do_query(outside_temperature_query % self.building)["Rows"]
 
@@ -244,7 +242,7 @@ class ThermalDataManager:
                                       'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
                                       't_out': dfs['t_out'].mean(),  # mean does not count Nan values
                                       'action': dfs['action'][
-                                          0]}  # TODO document why we expect no nan in a block. There actually is a ton of nan
+                                          0]}
 
                     for temperature_zone in dfs.columns[zone_col_filter]:
                         # mean does not count Nan values
@@ -298,7 +296,7 @@ class ThermalDataManager:
                                       't_max': np.max(dfs['t_in']),
                                       'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
                                       't_out': dfs['t_out'].mean(),  # mean does not count Nan values
-                                      'action': dfs['action'][0]}  # TODO document why we expect no nan in a block. There actually is a ton of nan
+                                      'action': dfs['action'][0]}
 
                     for temperature_zone in dfs.columns[zone_col_filter]:
                         # mean does not count Nan values
@@ -307,7 +305,7 @@ class ThermalDataManager:
 
         thermal_model_data = pd.DataFrame(data_list).set_index('time')
 
-        print("Before drop", thermal_model_data.shape) # TODO turns out we drop a lot of data. check why.
+        print("Before drop", thermal_model_data.shape)
         thermal_model_data = thermal_model_data.dropna()  # final drop. Mostly if the whole interval for the zones or t_out were nan.
         print("After drop", thermal_model_data.shape)
 
@@ -324,7 +322,6 @@ class ThermalDataManager:
                  a1 is whether heating and a2 whether cooling."""
 
         # thermal data preprocess starts here
-
         all_temperatures = pd.concat([tstat_df["t_in"] for tstat_df in zone_data.values()], axis=1)
         all_temperatures.columns = ["zone_temperature_" + zone for zone in zone_data.keys()]
         zone_thermal_model_data = {}
@@ -335,13 +332,11 @@ class ThermalDataManager:
             thermal_model_data = pd.concat([all_temperatures, actions, outside_data],
                                            axis=1)  # should be copied data according to documentation
             thermal_model_data = thermal_model_data.rename(columns={"zone_temperature_" + zone: "t_in"})
-            # thermal_model_data['action'] = thermal_model_data.apply(utils.f3, axis=1)  # TODO if we get 0.5 the heating happend for half the time.
 
             # NOTE:
             # The dataframe will have nan values because outside_temperature does not have same frequency as zone_data.
             # Hence, we interpolate values linearly,
             # since outside temperature does not need to be as accurate as inside data.
-            # TODO interpolate the temperatures also for forecasting reports if needed.
             thermal_model_data["t_out"] = thermal_model_data["t_out"].interpolate()
 
             # From here on preprocessing data. Concatinating all time contigious datapoints which have the same action.

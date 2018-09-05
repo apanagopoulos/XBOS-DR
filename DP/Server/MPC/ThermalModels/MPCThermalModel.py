@@ -9,9 +9,8 @@ sys.path.append("./ThermalModels")
 sys.path.append("..")
 
 import utils
-from DP.Server.MPC.ThermalModels.ThermalModel import ThermalModel
-from AverageThermalModel import AverageThermalModel
-from ConstantThermalModel import ConstantThermalModel
+from ThermalModel import ThermalModel
+from LinearThermalModel import LinearThermalModel
 
 
 class MPCThermalModel:
@@ -20,7 +19,7 @@ class MPCThermalModel:
         
         NOTE: when predicting will always round."""
 
-    def __init__(self, zone, thermal_data, interval_length, thermal_precision=0.05, is_two_stage=False):
+    def __init__(self, zone, thermal_data, interval_thermal, interval_length, thermal_precision=0.05, is_two_stage=False):
         """
         :param zone: The zone this Thermal model is meant for. 
         :param thermal_data: pd.df thermal data for zone (as preprocessed by ControllerDataManager). Only used for fitting.
@@ -33,35 +32,23 @@ class MPCThermalModel:
         self.is_two_stage = is_two_stage
 
         # set the thermal models to be used
-        self.thermal_model = ThermalModel(thermal_precision=thermal_precision)
-        self.average_thermal_model = AverageThermalModel(thermal_precision=thermal_precision)
-        self.constant_thermal_model = ConstantThermalModel(thermal_precision=thermal_precision)
+        self.thermal_model = ThermalModel(interval_thermal=interval_thermal, thermal_precision=thermal_precision)
+        self.linear_thermal_model = LinearThermalModel(interval_thermal=interval_thermal, thermal_precision=thermal_precision)
 
-        # the constants to use for the constant thermal model. It will add this constant to t_in to get t_next.
-        # Making sure we are adding increments for thermal precision to make use of pruning in the DP graph.
-        # TODO Get variable constants.
-        # Using thermal precision to predict if both average and thermal model provide
-        # inconsistent or non sensible data.
-        no_action_constant = 0
-        heating_constant = thermal_precision
-        cooling_constant = -thermal_precision
 
         # fit the thermal models
         self.thermal_model = self.thermal_model.fit(thermal_data, thermal_data["t_next"])
-        self.average_thermal_model = self.average_thermal_model.fit(thermal_data, thermal_data["t_next"])
-        self.constant_thermal_model = self.constant_thermal_model.fit(thermal_data, thermal_data["t_next"],
-                                                                      [no_action_constant,
-                                                                       heating_constant,
-                                                                       cooling_constant])  # constant action params.
+        self.linear_thermal_model = self.linear_thermal_model.fit(thermal_data, thermal_data["t_next"])
 
         # online training debugging.
         self._oldParams = {}
 
         # in case we want to set it during creation and don't have access during prediction.
         self.interval = interval_length
+        self.interval_thermal = interval_thermal
 
         # the data that will be stored through the MPCThermal Model to make usage easier.
-        self.zoneTemperatures = None
+        self.zone_temperatures = None
         self.outside_temperature = None  # hour corresponds to PST hour of the day used.
         self.last_action = None
 
@@ -96,7 +83,7 @@ class MPCThermalModel:
         :return: None
         """
         # set new zone temperatures.
-        self.zoneTemperatures = curr_zone_temperatures
+        self.zone_temperatures = curr_zone_temperatures
         return
 
     def update(self, curr_zone_temperatures, interval=15):
@@ -110,185 +97,48 @@ class MPCThermalModel:
         # TODO Fix this to get online learning going.
         pass
 
-
-    def _prediction_test(self, X, thermal_model):
-        """Takes the data X and for each datapoint runs the thermal model for each possible actions and 
-        sees if the prediction we would get is consistent and sensible. i.e. temperature change for heating is more than for 
-        cooling etc. 
-        Note, relies on having set self.is_two_stage to know if we are predicting two stage cooling data. """
-
-        # get predictions for every action possible.
-        def predict_action(X, action, thermal_model):
-            unit_actions = np.ones(X.shape[0])
-            X_copy = X.copy()
-            X_copy["action"] = unit_actions * action
-            return thermal_model.predict(X_copy)
-
-        def consistency_check(row, is_two_stage):
-            """check that the temperatures are in the order we expect them. Heating has to be strictly more than no
-            action and cooling and cooling has to be strictly less than heating and no action.
-            If we only want to check consistency for the doing nothing action, then it should suffice to only check
-            that the max of cooling is smaller and the min of heating is larger. 
-            :param row: pd.df keys which are the actions in all caps and "MAIN_ACTION" ,the action we actually 
-                    want to find the consistency for.
-            :param is_two_stage: bool wether we are using predictions for a two stage building.
-            :return bool. Whether the given data is consistent."""
-            main_action = row["MAIN_ACTION"]
-
-            if is_two_stage:
-                # can't have cooling that's higher than 0 and heating that's lower.
-                if max(row["COOLING_ACTION"], row["TWO_STAGE_COOLING_ACTION"]) >= row["T_IN"] or \
-                                min(row["HEATING_ACTION"], row["TWO_STAGE_HEATING_ACTION"]) <= row["T_IN"]:
-                    return False
-
-                # checks if the actions are in the correct order
-                if main_action == utils.NO_ACTION:
-                    if max(row["COOLING_ACTION"], row["TWO_STAGE_COOLING_ACTION"]) \
-                            < row["NO_ACTION"] \
-                            < min(row["HEATING_ACTION"], row["TWO_STAGE_HEATING_ACTION"]):
-                        return True
-                else:
-                    # TODO Maybe have only strictly greater.
-                    if row["TWO_STAGE_COOLING_ACTION"] <= row["COOLING_ACTION"] \
-                            < row["NO_ACTION"] \
-                            < row["HEATING_ACTION"] <= row["TWO_STAGE_HEATING_ACTION"]:
-                        return True
-            else:
-                # can't have cooling that's higher than 0 and heating that's lower.
-                if row["COOLING_ACTION"] >= row["T_IN"] or \
-                                row["HEATING_ACTION"] <= row["T_IN"]:
-                    return False
-
-                # checks if the actions are in the correct order
-                if row["COOLING_ACTION"] < row["NO_ACTION"] < row["HEATING_ACTION"]:
-                    return True
-
-            return False
-
-        def sensibility_check(X, is_two_stage, sensibility_measure=20):
-            """Checks if the predictions are within sensibility_measure degrees of tin. It wouldn't make sense to predict 
-            more. This will be done for all possible action predictions. If any one is not sensible, we will disregard 
-            the whole prediction set. 
-            ALSO, check if Nan values
-            :param X: pd.df keys which are the actions in all caps and "MAIN_ACTION" ,the action we actually 
-                    want to find the consistency for.
-            :param is_two_stage: bool wether we are using predictions for a two stage building.
-            :param sensibility_measure: (Float) degrees within the prediction may lie. 
-                            e.g. t_in-sensibility_measure < prediction < t_in+sensibility_measure
-            :return np.array booleans"""
-            differences = []
-            differences.append(np.abs(X["NO_ACTION"] - X["T_IN"]))
-            differences.append(np.abs(X["HEATING_ACTION"] - X["T_IN"]))
-            differences.append(np.abs(X["COOLING_ACTION"] - X["T_IN"]))
-            if is_two_stage:
-                differences.append(np.abs(X["TWO_STAGE_HEATING_ACTION"] - X["T_IN"]))
-                differences.append(np.abs(X["TWO_STAGE_COOLING_ACTION"] - X["T_IN"]))
-
-
-            # check if every difference is in sensible band and not nan. We can check if the prediction is nan
-            # by checking if the difference is nan, because np.nan + x = np.nan
-            sensibility_filter_array = [(diff < sensibility_measure) & (diff != np.nan) for diff in differences]
-            # putting all filters together by taking the and of all of them.
-            sensibility_filter_check = reduce(lambda x, y: x & y, sensibility_filter_array)
-            return sensibility_filter_check.values
-
-
-        no_action_predictions = predict_action(X, utils.NO_ACTION, thermal_model)
-        heating_action_predictions = predict_action(X, utils.HEATING_ACTION, thermal_model)
-        cooling_action_predictions = predict_action(X, utils.COOLING_ACTION, thermal_model)
-        if self.is_two_stage:
-            two_stage_heating_predictions = predict_action(X, utils.TWO_STAGE_HEATING_ACTION, thermal_model)
-            two_stage_cooling_predictions = predict_action(X, utils.TWO_STAGE_COOLING_ACTION, thermal_model)
-        else:
-            two_stage_cooling_predictions = None
-            two_stage_heating_predictions = None
-
-        predictions_action = pd.DataFrame({"T_IN": X["t_in"], "NO_ACTION": no_action_predictions,
-                                           "HEATING_ACTION": heating_action_predictions,
-                                           "COOLING_ACTION": cooling_action_predictions,
-                                           "TWO_STAGE_HEATING_ACTION": two_stage_heating_predictions,
-                                           "TWO_STAGE_COOLING_ACTION": two_stage_cooling_predictions,
-                                           "MAIN_ACTION": X["action"]})
-
-        consistent_filter = predictions_action.apply(lambda row: consistency_check(row, self.is_two_stage), axis=1)
-        sensibility_filter = sensibility_check(predictions_action, self.is_two_stage, sensibility_measure=20)
-
-        return consistent_filter.values & sensibility_filter
-
-    # TODO right now only one datapoint is being predicted. Extend to more. Consistecy check works for arbitrary data.
-    def predict(self, t_in, action, time=None, outside_temperature=None, interval=None, debug=False):
+    def predict(self, t_in, action, outside_temperature, interval,
+                max_heating_per_minute=0.5, max_cooling_per_minute=0.5, debug=False):
         """
         Predicts temperature for zone given.
-        :param t_in: 
+        :param t_in: float
         :param action: (float)
-        :param outside_temperature: 
-        :param interval: 
-        :param time: the hour index for self.outside_temperature. 
-        TODO understand how we can use hours if we look at next days .(i.e. horizon extends over midnight.)
-        :param debug: wether to debug, meaning return the type of thermal model that causes each prediction.
+        :param outside_temperature: float
+        :param interval: float
+        :param debug: whether to debug, meaning return the type of thermal model that causes each prediction.
         :return: not debug: (np.array) predictions in order. 
                  debug: (np.array) predictions in order, (np.array dtype=object/strings) thermal_model types 
         """
         if interval is None:
             interval = self.interval
-        if outside_temperature is None:
-            assert time is not None
-            assert self.outside_temperature is not None
-            t_out = self.outside_temperature[time]
+
+        t_out = outside_temperature
+
+        # Get predictions for all actions to accuratly do consistency checks. NOTE: Not doing 2 stage here.
+        X_heating = self._datapoint_to_dataframe(interval, t_in, utils.HEATING_ACTION, t_out, self.zone_temperatures)
+        X_cooling = self._datapoint_to_dataframe(interval, t_in, utils.COOLING_ACTION, t_out, self.zone_temperatures)
+        X_no_action = self._datapoint_to_dataframe(interval, t_in, utils.NO_ACTION, t_out, self.zone_temperatures)
+
+        prediction_heating = self.thermal_model.predict(X_heating)[0]
+        prediction_cooling = self.thermal_model.predict(X_cooling)[0]
+        prediction_no_action = self.thermal_model.predict(X_no_action)[0]
+
+        # Consistency and sensibility checks for all predictions.
+        prediction_heating = max(prediction_heating, t_in + self.thermal_model.thermal_precision)
+        prediction_heating = min(prediction_heating, t_in + max_heating_per_minute * interval)
+
+        prediction_cooling = min(prediction_cooling, t_in - self.thermal_model.thermal_precision)
+        prediction_cooling = max(prediction_cooling, t_in + max_cooling_per_minute * interval)
+
+        prediction_no_action = max(prediction_no_action, prediction_cooling)
+        prediction_no_action = min(prediction_no_action, prediction_heating)
+
+        if utils.is_heating(action):
+            return prediction_heating
+        elif utils.is_cooling(action):
+            return prediction_cooling
         else:
-            t_out = outside_temperature
-
-        X = self._datapoint_to_dataframe(interval, t_in, action, t_out, self.zoneTemperatures)
-
-        thermal_model_predictions = self.thermal_model.predict(X)
-
-        # makes sure that the predictions that we make are consistent.
-        thermal_model_filter = self._prediction_test(X, self.thermal_model)
-
-        # identify all the elements that are predicted by thermal_model
-        model_types = np.array(thermal_model_filter.shape, dtype=object)
-        model_types[thermal_model_filter] = "thermal_model"
-
-        # if not all thermal_model predictions are sensible and consistent
-        if not all(thermal_model_filter):
-            thermal_model_inconsistent_data = X[thermal_model_filter == 0]
-            average_thermal_model_predictions = self.average_thermal_model.predict(thermal_model_inconsistent_data)
-            average_thermal_model_filter = self._prediction_test(thermal_model_inconsistent_data,
-                                                                 self.average_thermal_model)
-
-            # identify all the elements that are predicted by average thermal_model
-            average_model_types = np.array(average_thermal_model_filter.shape, dtype=object)
-            average_model_types[average_thermal_model_filter] = "average_thermal_model"
-
-            # if not all average_thermal_model predictions are sensible and consistent
-            if not all(average_thermal_model_filter):
-                average_model_inconsistent_data = thermal_model_inconsistent_data[
-                    average_thermal_model_filter == 0]
-                constant_thermal_model_predictions = self.constant_thermal_model.predict(
-                    average_model_inconsistent_data)
-                constant_thermal_model_filter = self._prediction_test(
-                    average_model_inconsistent_data, self.constant_thermal_model)
-
-                # Sanity check that the constant model gives sensible and consistent data.
-                assert all(constant_thermal_model_filter)
-
-                # make average consistent by filling it with constant predictions.
-                average_thermal_model_predictions[
-                    average_thermal_model_filter == 0] = constant_thermal_model_predictions
-
-                # identify all the elements that are predicted by constant thermal_model
-                average_model_types[average_thermal_model_filter == 0] = "constant_model"
-
-            # make thermal model consistent by using the corrected average thermal model predictions
-            thermal_model_predictions[thermal_model_filter == 0] = average_thermal_model_predictions
-
-            # Combine all prediction types
-            model_types[thermal_model_filter == 0] = average_model_types
-
-        if debug:
-            return thermal_model_predictions, model_types
-
-        return thermal_model_predictions
+            return prediction_no_action
 
     def save_to_config(self):
         # this does not work anymore as intended.
@@ -299,7 +149,7 @@ class MPCThermalModel:
         config_dict = {}
 
         # store zone temperatures
-        config_dict["Zone Temperatures"] = self.zoneTemperatures
+        config_dict["Zone Temperatures"] = self.zone_temperatures
 
         # store coefficients
         coefficients = {parameter_name: param for parameter_name, param in

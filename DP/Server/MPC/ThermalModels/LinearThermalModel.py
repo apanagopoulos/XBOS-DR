@@ -11,7 +11,7 @@ from scipy.optimize import curve_fit
 
 
 # following model also works as a sklearn model.
-class ThermalModel(ParentThermalModel):
+class LinearThermalModel(ParentThermalModel):
     def __init__(self, interval_thermal, thermal_precision=0.05, learning_rate=0.00001):
         '''
         :param interval_thermal: The minutes the thermal model learns to predict for. The user is responsible to ensure
@@ -20,15 +20,15 @@ class ThermalModel(ParentThermalModel):
         '''
 
         self._params = None
-        self._params_coeff_order = None # first part of _params is coeff part
-        self._params_bias_order = None # the rest is bias part.
+        self._params_coeff_order = None  # first part of _params is coeff part
+        self._params_bias_order = None  # the rest is bias part.
         self._filter_columns = None  # order of columns by which to filter when predicting and fitting data.
 
         self.thermal_precision = thermal_precision
         self.learning_rate = learning_rate  # TODO evaluate which one is best.
 
         # Set the parent variables
-        super(ThermalModel, self).__init__(thermal_precision, interval_thermal)
+        super(LinearThermalModel, self).__init__(thermal_precision, interval_thermal)
 
 
     # thermal model function
@@ -53,7 +53,7 @@ class ThermalModel(ParentThermalModel):
             params = self._params
 
         coeffs = params[:len(self._params_coeff_order)]
-        biases = params[len(self._params_coeff_order):]
+        biases = [0, 0, 0, 0] + list(params[len(self._params_coeff_order):])
 
         features = self._features(X)
         Tin, action = X[0], X[1]
@@ -74,10 +74,10 @@ class ThermalModel(ParentThermalModel):
         :param X: A matrix with row order (Tin, action, Tout, dt, rest of zone temperatures)
         :return np.matrix. each column corresponding to the features in the order of self._param_order"""
         Tin, action, Tout, dt, zone_temperatures = X[0], X[1], X[2], X[3], X[4:]
-        features = [Tin,  # action == utils.HEATING_ACTION
-                    Tin,  # action == utils.COOLING_ACTION
-                    Tin,  # action == utils.TWO_STAGE_HEATING_ACTION
-                    Tin,  # action == utils.TWO_STAGE_COOLING_ACTION
+        features = [np.ones(X.shape[1]),  # action == utils.HEATING_ACTION
+                    np.ones(X.shape[1]),  # action == utils.COOLING_ACTION
+                    np.ones(X.shape[1]),  # action == utils.TWO_STAGE_HEATING_ACTION
+                    np.ones(X.shape[1]),  # action == utils.TWO_STAGE_COOLING_ACTION
                     Tin - Tout,
                     np.zeros(X.shape[1])]  # overall bias
         for zone_temp in zone_temperatures:
@@ -122,9 +122,7 @@ class ThermalModel(ParentThermalModel):
                                     'two_stage_heating', 'two_stage_cooling',
                                     't_out', 'bias'] + list(zone_col)
 
-        self._params_bias_order = ["heating", 'cooling',
-                                    'two_stage_heating', 'two_stage_cooling',
-                                    't_out', 'bias'] + list(zone_col)
+        self._params_bias_order = ['t_out', 'bias'] + list(zone_col)
 
         # fit the data. we start our guess with all ones for coefficients.
         # Need to do so to be able to generalize to variable number of zones.

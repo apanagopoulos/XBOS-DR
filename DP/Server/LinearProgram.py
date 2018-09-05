@@ -3,6 +3,7 @@ import json
 import threading
 from collections import defaultdict
 import time
+import math
 
 # Linear program solver.
 import gurobipy
@@ -10,6 +11,7 @@ import numpy as np
 import pytz
 
 import utils
+from ThermalDataManager import ThermalDataManager
 
 
 def to_var(var_type, zone, time_step):
@@ -48,6 +50,7 @@ class AdviseLinearProgram:
 
         # set the datamangers for all possible zones for the given building
         self.data_managers_zones = utils.get_zone_data_managers(building, utils.get_zones(building), None, client)
+        self.thermal_data_manager = ThermalDataManager(utils.get_config(building), client, interval=5)
 
     def advise(self, start, end, zones, cfg_building, cfg_zones, thermal_models,
                zone_starting_temperatures, consumption_storage):
@@ -55,19 +58,20 @@ class AdviseLinearProgram:
         # reset the last_lp_data
         self.last_lp_data = defaultdict(lambda: defaultdict(dict))
 
-        # TODO fix end How are we gonna work with end and start here ? Just get the longest interval or what
+        # set start and end times.
         start_utc = start.astimezone(tz=pytz.utc)
-        end_utc = start_utc + datetime.timedelta(hours=cfg_zones.values()[0]["Advise"]["MPCPredictiveHorizon"])
-        # end_utc = end.astimezone(tz=pytz.utc)
+        end_utc = end.astimezone(tz=pytz.utc)
 
         start_cfg_timezone = start_utc.astimezone(tz=utils.get_config_timezone(cfg_building))
         end_cfg_timezone = end_utc.astimezone(tz=utils.get_config_timezone(cfg_building))
 
         # For thermal model need to set weather predictions for every loop and set current zone temperatures.
+        outside_temperatures = utils.get_outside_temperatures(cfg_building, start_utc, end_utc,
+                                                              self.data_managers_zones.values()[0],
+                                                              self.thermal_data_manager, interval=15)
         for zone, zone_thermal_model in thermal_models.items():
             zone_thermal_model.set_temperatures(zone_starting_temperatures)
-            # FIX OUTSIDE DATA
-            zone_thermal_model.set_outside_temperature(None)
+            zone_thermal_model.set_outside_temperature(outside_temperatures)
 
         # get datamangers to use
         data_managers_to_use = {}
@@ -79,7 +83,7 @@ class AdviseLinearProgram:
         linear_program = LinearProgram(building=self.building, zones=zones, start=start_cfg_timezone,
                                        end=end_cfg_timezone,
                                        starting_zone_temperatures=zone_starting_temperatures,
-                                       data_managers=data_managers_to_use,
+                                       data_managers=data_managers_to_use, thermal_models=thermal_models,
                                        debug=self.debug)
         # TODO following functions should be called in optimize i guess?
         # set linear Program parameters
@@ -89,8 +93,8 @@ class AdviseLinearProgram:
 
         # Run optimization
         linear_program.lp_solver.optimize()
-        # TODO set shared linear program variable accordingly.
-        # set the variables into a data dictionary
+
+        # set the results into a data dictionary
         for v in linear_program.lp_solver.getVars():
             var_dict = from_var(v.varName)
             var_type, var_zone, var_time = var_dict["var_type"], var_dict["zone"], var_dict["time_step"]
@@ -124,8 +128,9 @@ class AdviseLinearProgram:
 
 class LinearProgram:
     """The linear porgram class."""
+    # NOTE: Assuming thermal_interval % interval = 0.
 
-    def __init__(self, building, zones, start, end, starting_zone_temperatures, data_managers, debug=False):
+    def __init__(self, building, zones, start, end, starting_zone_temperatures, data_managers, thermal_models, debug=False):
         """
         
         :param building: (str) building name
@@ -148,6 +153,9 @@ class LinearProgram:
 
         # set datamanagers
         self.datamanager_zones = data_managers
+
+        # set thermal models
+        self.thermal_models = thermal_models
 
         # TODO think if all times are properly synchronized. Especially with the num timesteps having too many too little steps.
         # TODO The util functions have end inclusive, but that gives too many intervals.
@@ -198,10 +206,16 @@ class LinearProgram:
                                              time in range(self.num_timesteps - 1)])
                                for zone in self.zones}
 
-        # The inside temperatures
+        # make sure that interval % thermal_interval = 0.
+        assert all([self.interval % self.thermal_models[iter_zone].interval_thermal == 0 for iter_zone in self.zones])
+
+        # The inside temperatures. Since the thermal model may learn predictions which are not for same interval length
+        # as we want.
         self.t_in = {zone: np.array([self.lp_solver.addVar(name=to_var("t_in", zone, time)) for
-                                     time in range(self.num_timesteps)])
+                                     time in range(
+                int(self.num_timesteps * math.ceil(self.interval/self.thermal_models[zone].interval_thermal)))])
                      for zone in self.zones}
+
         # set starting temperatures
         for zone in self.zones:
             self.t_in[zone][0] = starting_zone_temperatures[zone]
@@ -223,19 +237,50 @@ class LinearProgram:
         NOTE: Now just using a constant model. If heat we add 0.1 degrees and when cool we subtract.
         :return: None
         """
-        HEAT = 0.1
-        COOL = -0.1
-        # Using the timesteps as outer loop for when having to link the zone temperatures.
-        # We already know 0th time, so no need to set it.
-        for time in range(1, self.num_timesteps):
-            for zone in self.zones:
-                last_temperature = self.t_in[zone][time - 1]
-                # getting the action for last interval. because that is when we start and advance forward.
-                action_cooling = self.action_cooling[zone][time - 1]
-                action_heating = self.action_heating[zone][time - 1]
+        # set the data matrix for thermal model to create the features
+        for iter_zone in self.zones:
+            thermal_model = self.thermal_models[iter_zone]
+            thermal_interval = thermal_model.interval_thermal
+            for time in range(1, len(self.t_in)):
 
-                self.lp_solver.addConstr(self.t_in[zone][time] == last_temperature +
-                                         action_cooling * COOL + action_heating * HEAT)
+                # getting the action for last interval. because that is when we start and advance forward.
+                if ((time - 1) * thermal_interval % self.interval) == 0:
+                    action_cooling = self.action_cooling[iter_zone][(time - 1) / int(self.interval / thermal_interval)]
+                    action_heating = self.action_heating[iter_zone][(time - 1) / int(self.interval / thermal_interval)]
+
+                    # The last outside temperatures to get the current inside temperature.
+                    t_out = thermal_model.outside_temperature.loc[
+                        self.start + datetime.timedelta(minutes=(time - 1) / int(self.interval / thermal_interval))]
+
+                # get relevant temperatures
+                prev_temperature = self.t_in[iter_zone][time-1]
+                curr_temperature = self.t_in[iter_zone][time]
+                other_zone_temperatures = thermal_model.zone_temperatures
+
+
+                # to get the zone order in which to apply the coefficients
+                # ["heating", 'cooling','two_stage_heating', 'two_stage_cooling','t_out', 'bias'] + list(zone_col)
+                param_oder = thermal_model.thermal_model._params_coeff_order
+                zone_list = param_oder[6:]
+
+                # Get coefficients and biases
+                coeffs = thermal_model.linear_thermal_model._params[:len(param_oder)]
+                biases = thermal_model.linear_thermal_model._params[len(param_oder):]
+
+                # other zone contribution
+                other_zone_contribution = 0
+                for i in range(len(zone_list)):
+                    other_zone_contribution = (prev_temperature - other_zone_temperatures[zone_list[i][len("zone_temperature_"):]]
+                                               - biases[i + 2]) * coeffs[i+6]
+
+                # set up equality. We will skip two stage for now.
+                self.lp_solver.addConstr(curr_temperature == prev_temperature +
+                                         action_heating * coeffs[0] +
+                                         action_cooling * coeffs[1] +
+                                         (prev_temperature - t_out - biases[0]) * coeffs[4] +
+                                         (-biases[1])* coeffs[5]+
+                                         other_zone_contribution)
+
 
     def set_discomfort(self):
         """Sets the discomfort constraints. Discomfort is the distance to the comfortband.

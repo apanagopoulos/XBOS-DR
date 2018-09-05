@@ -172,6 +172,111 @@ def get_datetime_to_string(date_object):
 
 # ============ DATA FUNCTIONS ============
 
+
+def prediction_test( X, thermal_model, is_two_stage):
+    """Takes the data X and for each datapoint runs the thermal model for each possible actions and 
+    sees if the prediction we would get is consistent and sensible. i.e. temperature change for heating is more than for 
+    cooling etc. 
+    Note, relies on having set self.is_two_stage to know if we are predicting two stage cooling data. """
+
+    # get predictions for every action possible.
+    def predict_action(X, action, thermal_model):
+        unit_actions = np.ones(X.shape[0])
+        X_copy = X.copy()
+        X_copy["action"] = unit_actions * action
+        return thermal_model.predict(X_copy)
+
+    def consistency_check(row, is_two_stage):
+        """check that the temperatures are in the order we expect them. Heating has to be strictly more than no
+        action and cooling and cooling has to be strictly less than heating and no action.
+        If we only want to check consistency for the doing nothing action, then it should suffice to only check
+        that the max of cooling is smaller and the min of heating is larger. 
+        :param row: pd.df keys which are the actions in all caps and "MAIN_ACTION" ,the action we actually 
+                want to find the consistency for.
+        :param is_two_stage: bool wether we are using predictions for a two stage building.
+        :return bool. Whether the given data is consistent."""
+        main_action = row["MAIN_ACTION"]
+
+        if is_two_stage:
+            # can't have cooling that's higher than 0 and heating that's lower.
+            if max(row["COOLING_ACTION"], row["TWO_STAGE_COOLING_ACTION"]) >= row["T_IN"] or \
+                            min(row["HEATING_ACTION"], row["TWO_STAGE_HEATING_ACTION"]) <= row["T_IN"]:
+                return False
+
+            # checks if the actions are in the correct order
+            if main_action == NO_ACTION:
+                if max(row["COOLING_ACTION"], row["TWO_STAGE_COOLING_ACTION"]) \
+                        < row["NO_ACTION"] \
+                        < min(row["HEATING_ACTION"], row["TWO_STAGE_HEATING_ACTION"]):
+                    return True
+            else:
+                # TODO Maybe have only strictly greater.
+                if row["TWO_STAGE_COOLING_ACTION"] <= row["COOLING_ACTION"] \
+                        < row["NO_ACTION"] \
+                        < row["HEATING_ACTION"] <= row["TWO_STAGE_HEATING_ACTION"]:
+                    return True
+        else:
+            # can't have cooling that's higher than 0 and heating that's lower.
+            if row["COOLING_ACTION"] >= row["T_IN"] or \
+                            row["HEATING_ACTION"] <= row["T_IN"]:
+                return False
+
+            # checks if the actions are in the correct order
+            if row["COOLING_ACTION"] < row["NO_ACTION"] < row["HEATING_ACTION"]:
+                return True
+
+        return False
+
+    def sensibility_check(X, is_two_stage, sensibility_measure=20):
+        """Checks if the predictions are within sensibility_measure degrees of tin. It wouldn't make sense to predict 
+        more. This will be done for all possible action predictions. If any one is not sensible, we will disregard 
+        the whole prediction set. 
+        ALSO, check if Nan values
+        :param X: pd.df keys which are the actions in all caps and "MAIN_ACTION" ,the action we actually 
+                want to find the consistency for.
+        :param is_two_stage: bool wether we are using predictions for a two stage building.
+        :param sensibility_measure: (Float) degrees within the prediction may lie. 
+                        e.g. t_in-sensibility_measure < prediction < t_in+sensibility_measure
+        :return np.array booleans"""
+        differences = []
+        differences.append(np.abs(X["NO_ACTION"] - X["T_IN"]))
+        differences.append(np.abs(X["HEATING_ACTION"] - X["T_IN"]))
+        differences.append(np.abs(X["COOLING_ACTION"] - X["T_IN"]))
+        if is_two_stage:
+            differences.append(np.abs(X["TWO_STAGE_HEATING_ACTION"] - X["T_IN"]))
+            differences.append(np.abs(X["TWO_STAGE_COOLING_ACTION"] - X["T_IN"]))
+
+
+        # check if every difference is in sensible band and not nan. We can check if the prediction is nan
+        # by checking if the difference is nan, because np.nan + x = np.nan
+        sensibility_filter_array = [(diff < sensibility_measure) & (diff != np.nan) for diff in differences]
+        # putting all filters together by taking the and of all of them.
+        sensibility_filter_check = reduce(lambda x, y: x & y, sensibility_filter_array)
+        return sensibility_filter_check.values
+
+
+    no_action_predictions = predict_action(X, NO_ACTION, thermal_model)
+    heating_action_predictions = predict_action(X, HEATING_ACTION, thermal_model)
+    cooling_action_predictions = predict_action(X,  COOLING_ACTION, thermal_model)
+    if is_two_stage:
+        two_stage_heating_predictions = predict_action(X,  TWO_STAGE_HEATING_ACTION, thermal_model)
+        two_stage_cooling_predictions = predict_action(X,  TWO_STAGE_COOLING_ACTION, thermal_model)
+    else:
+        two_stage_cooling_predictions = None
+        two_stage_heating_predictions = None
+
+    predictions_action = pd.DataFrame({"T_IN": X["t_in"], "NO_ACTION": no_action_predictions,
+                                       "HEATING_ACTION": heating_action_predictions,
+                                       "COOLING_ACTION": cooling_action_predictions,
+                                       "TWO_STAGE_HEATING_ACTION": two_stage_heating_predictions,
+                                       "TWO_STAGE_COOLING_ACTION": two_stage_cooling_predictions,
+                                       "MAIN_ACTION": X["action"]})
+
+    consistent_filter = predictions_action.apply(lambda row: consistency_check(row, is_two_stage), axis=1)
+    sensibility_filter = sensibility_check(predictions_action, is_two_stage, sensibility_measure=20)
+
+    return consistent_filter.values & sensibility_filter
+
 def and_dictionary(a_dict, b_dict):
     """
     Takes the and of two boolean dictionaries with same keys.
@@ -508,9 +613,6 @@ def interpolate_to_start_end_range(data, start, end, interval):
     return data.reindex(date_range.union(data.index)).interpolate().loc[date_range]
 
 
-# TODO Finsih this up once i have more energy. Make it return a dataframe. I am not happy with this because
-# we are first downsampling the historic data and then interpolating again. Just overall needs an overhaul,
-# but for now it will suffice to implement simulations and linear program.
 def get_outside_temperatures(building_config, start, end, data_manager, thermal_data_manager, interval=15):
     """
     Get outside weather from start to end. Will combine historic and weather predictions data when necessary.
@@ -521,9 +623,6 @@ def get_outside_temperatures(building_config, start, end, data_manager, thermal_
     """
     # we might have that the given now is before the actual current time
     # hence need to get historic data and combine with weather predictions.
-
-    # TODO Need to fix how we get the end from the weather_fetch method. So for now we need to restrict our end time.
-    end = start + datetime.timedelta(hours=4)
 
     # For finding out if start or/and end are before or after the current time.
     utc_now = get_utc_now()
@@ -575,7 +674,6 @@ def get_outside_temperatures(building_config, start, end, data_manager, thermal_
     # Populating the outside_temperatures pd.Series for MPC use. Ouput is in cfg timezone.
     outside_temperatures = pd.Series(index=pd.date_range(start_cfg_timezone, end_cfg_timezone, freq=str(interval)+"T"))
     if future_start_cfg_timezone is not None:
-        # TODO implement end for weather_fetch
         future_weather = data_manager.weather_fetch(start=future_start_cfg_timezone, end=future_end_cfg_timezone, interval=interval)
         outside_temperatures[future_start_cfg_timezone:future_end_cfg_timezone] = future_weather.values
 

@@ -48,13 +48,15 @@ class SimulationTstat:
 
 
 
-    def next_temperature(self, action, debug=False):
+    def next_temperature(self, action, predict_time, interval, debug=False):
         """Needs to be called before using the next temperature. 
         Predicts for the given action and adds noise as given by the guassian distribution from the error
         of the thermal model. Also, updates the time_step by one so we know how often we have predicted.
         NOTE: Assumes that mpc_thermal_model has the outside temperatures it used to predict in Advise and the last
         action the Advise predicted as the optimal action.
         :param action: (int) the action to use according to constants set in utils.py
+        :param predict_time: (datetime timezone aware) Time at which to predict. Mainly for outside temperature. 
+        :param interval: (int) minutes for prediction.
         :param debug: boolean, whether to return more infromation for debugging. such as returning the noise as well.
         :return int, the current temperature."""
 
@@ -66,10 +68,13 @@ class SimulationTstat:
 
         self.time_step += 1
 
-        # TODO fix the outside temperature. This is not quiet right since the dictinary need not be in order.
-        curr_outside_temperature = 70  # self.mpc_thermal_model.outside_temperature.values()[0]
+        # getting outside temperature.
+        curr_outside_temperature = self.mpc_thermal_model.outside_temperature.loc[predict_time]
+
+        # Getting predicted next temperature and then adding noise
         next_temperature = self.mpc_thermal_model.predict(self.temperature, action,
-                                                          outside_temperature=curr_outside_temperature, debug=False)[0]
+                                                          outside_temperature=curr_outside_temperature,
+                                                          interval=interval, debug=False)
         noise = np.random.normal(gaussian_mean, gaussian_std)
         self.temperature = next_temperature + noise
         if debug:

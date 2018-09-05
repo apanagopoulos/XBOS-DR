@@ -12,8 +12,12 @@ class ParentThermalModel:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, thermal_precision):
+    def __init__(self, thermal_precision, interval_thermal):
+        # the thermal precision when rounding
         self.thermal_precision = thermal_precision
+
+        # the number of minutes that the thermal models learns to predict for.
+        self.interval_thermal = interval_thermal
 
     @abstractmethod
     def _features(self, X):
