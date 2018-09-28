@@ -38,9 +38,9 @@ class ThermalDataManager:
         self.window_size = 1  # minutes. TODO should come from config.
         self.hod_client = HodClient("xbos/hod", self.client)  # TODO Potentially could incorporate this into MDAL query.
 
-    def _preprocess_outside_data(self, outside_data):
+    def preprocess_outside_data(self, outside_data):
         """
-        
+    
         :param outside_data: (list) of pd.
          with col ["t_out"] for each weather station. 
         :return: pd.df with col ["t_out"]
@@ -69,7 +69,7 @@ class ThermalDataManager:
 
         return final_outside_data
 
-    def _get_outside_data(self, start=None, end=None, inclusive=False):
+    def get_outside_data(self, start=None, end=None, inclusive=False):
         """Get outside temperature for thermal model.
         :param start: (datetime) time to start. in UTC time.
         :param end: (datetime) time to end. in UTC time.
@@ -112,7 +112,7 @@ class ThermalDataManager:
 
         return outside_temperature_data
 
-    def _get_inside_data(self, start, end):
+    def get_inside_data(self, start, end):
         """Get thermostat status and temperature and outside temperature for thermal model.
         :param start: (datetime) time to start. in UTC time.
         :param end: (datetime) time to end. in UTC time. 
@@ -205,49 +205,49 @@ class ThermalDataManager:
 
         return zone_thermal_data
 
-    def _preprocess_zone_thermal_data(self, thermal_model_data):
+    def preprocess_zone_thermal_data(self, thermal_model_data, evaluate_preprocess=False):
         """
         Preprocess data for one zone.
         :param thermal_model_data: pd.df columns: t_in','t_out', 'action', [other zone temperatures]
+        :param evaluate_preprocess: If flag on, adds more fields to understand thermal data better. 
         :return: pd.df columns: t_in', 't_next', 'dt','t_out', 'action', 'a1', 'a2', [other mean zone temperatures]
         """
         # Finding all points where action changed.
         thermal_model_data['change_of_action'] = (thermal_model_data['action'].diff(1) != 0).astype(
-            'int').cumsum()  # given a row it's the number of times we have had an action change up till then. e.g. from nothing to heating.
-        # This is accomplished by taking the difference of two consecutive rows and checking if their difference is 0 meaning that they had the same action.
+            'int').cumsum()
 
         # following adds the fields "time", "dt" etc such that we accumulate all values where we have consecutively the same action.
-        # maximally we group terms of total self.interval. To get self.interval of data, we will actually look at
-        # self.interval + 1 data-points. | -- 1 min -- | -- 1 min -- | -- 1 min -- | will only give us a span of two
-        # minutes because we can only look at the Tin corresponding to the start of the 1 min windows. So, at the
-        # start of the third window, only 2 min have passed. (In fact, MDAL gives us the mean of the windows, but we
-        # can just assume that it is the starting temperature, the logic stays the same.)
-        # We need to accept that we will loose a datapoint by doing so. Ideally, we should be able to just look at the
-        # window that follows right after a contigious action block and assume that that is the t_next. However, since
-        # we have many nan values, that t_next could be hours in the future.
 
         # NOTE: Only dropping nan value during gathering stage and after that. Before then not doing it because
         # we want to keep the times contigious.
         data_list = []
         for j in thermal_model_data.change_of_action.unique():
             for i in range(0, thermal_model_data[thermal_model_data['change_of_action'] == j].shape[0],
-                           self.interval + 1):
-                for dfs in [thermal_model_data[thermal_model_data['change_of_action'] == j][i:i + self.interval + 1]]:
-                    # we only look at intervals where the last and first value for T_in are not Nan.
-                    dfs.dropna(subset=["t_in"])
-                    zone_col_filter = ["zone_temperature_" in col for col in dfs.columns]
-                    temp_data_dict = {'time': dfs.index[0],
-                                      't_in': dfs['t_in'][0],
-                                      't_next': dfs['t_in'][-1],
-                                      'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
-                                      't_out': dfs['t_out'].mean(),  # mean does not count Nan values
-                                      'action': dfs['action'][
-                                          0]}
+                           self.interval):
 
-                    for temperature_zone in dfs.columns[zone_col_filter]:
-                        # mean does not count Nan values
-                        temp_data_dict[temperature_zone] = dfs[temperature_zone].mean()
-                    data_list.append(temp_data_dict)
+                # get dfs to process.
+                dfs = thermal_model_data[thermal_model_data['change_of_action'] == j][i:i + self.interval + 1]
+
+                # we only look at intervals where the last and first value for T_in are not Nan.
+                dfs.dropna(subset=["t_in"])
+                zone_col_filter = ["zone_temperature_" in col for col in dfs.columns]
+                temp_data_dict = {'time': dfs.index[0],
+                                  't_in': dfs['t_in'][0],
+                                  't_next': dfs['t_in'][-1],
+                                  'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
+                                  't_out': dfs['t_out'].mean(),  # mean does not count Nan values
+                                  'action': dfs['action'][
+                                      0]}
+
+                # add fields to debug thermal data.
+                if evaluate_preprocess:
+                    temp_data_dict["t_max"] = max(dfs["t_in"])
+                    temp_data_dict["t_min"] = min(dfs["t_in"])
+
+                for temperature_zone in dfs.columns[zone_col_filter]:
+                    # mean does not count Nan values
+                    temp_data_dict[temperature_zone] = dfs[temperature_zone].mean()
+                data_list.append(temp_data_dict)
 
         thermal_model_data = pd.DataFrame(data_list).set_index('time')
 
@@ -255,71 +255,14 @@ class ThermalDataManager:
 
         return thermal_model_data
 
-    def _evaluation_preprocess_zone_thermal_data(self, thermal_model_data):
-        """
-        Preprocess data for one zone. Add two field t_min and t_max which tells you how much the data varied. Add t_mean and
-        t_std as well. 
-        :param thermal_model_data: pd.df columns: t_in','t_out', 'action', [other zone temperatures]
-        :return: pd.df columns: 't_in', 't_next', 't_min', 't_max', 'dt','t_out', 'action', 'a1', 'a2', [other mean zone temperatures]
-        """
-        # Finding all points where action changed.
-        thermal_model_data['change_of_action'] = (thermal_model_data['action'].diff(1) != 0).astype(
-            'int').cumsum()  # given a row it's the number of times we have had an action change up till then. e.g. from nothing to heating.
-        # This is accomplished by taking the difference of two consecutive rows and checking if their difference is 0 meaning that they had the same action.
-
-        # following adds the fields "time", "dt" etc such that we accumulate all values where we have consecutively the same action.
-        # maximally we group terms of total self.interval. To get self.interval of data, we will actually look at
-        # self.interval + 1 data-points. | -- 1 min -- | -- 1 min -- | -- 1 min -- | will only give us a span of two
-        # minutes because we can only look at the Tin corresponding to the start of the 1 min windows. So, at the
-        # start of the third window, only 2 min have passed. (In fact, MDAL gives us the mean of the windows, but we
-        # can just assume that it is the starting temperature, the logic stays the same.)
-        # We need to accept that we will loose a datapoint by doing so. Ideally, we should be able to just look at the
-        # window that follows right after a contigious action block and assume that that is the t_next. However, since
-        # we have many nan values, that t_next could be hours in the future.
-
-        # NOTE: Only dropping nan value during gathering stage and after that. Before then not doing it because
-        # we want to keep the times contigious.
-        data_list = []
-        for j in thermal_model_data.change_of_action.unique():
-            for i in range(0, thermal_model_data[thermal_model_data['change_of_action'] == j].shape[0],
-                           self.interval + 1):
-                for dfs in [thermal_model_data[thermal_model_data['change_of_action'] == j][i:i + self.interval + 1]]:
-                    # we only look at intervals where the last and first value for T_in are not Nan.
-                    dfs.dropna(subset=["t_in"])
-                    zone_col_filter = ["zone_temperature_" in col for col in dfs.columns]
-                    temp_data_dict = {'time': dfs.index[0],
-                                      't_in': dfs['t_in'][0],
-                                      't_next': dfs['t_in'][-1],
-                                      't_mean': np.mean(dfs['t_in']),
-                                      't_std': np.std(dfs['t_in']),
-                                      't_min': np.min(dfs['t_in']),
-                                      't_max': np.max(dfs['t_in']),
-                                      'dt': (dfs.index[-1] - dfs.index[0]).seconds / 60,
-                                      't_out': dfs['t_out'].mean(),  # mean does not count Nan values
-                                      'action': dfs['action'][0]}
-
-                    for temperature_zone in dfs.columns[zone_col_filter]:
-                        # mean does not count Nan values
-                        temp_data_dict[temperature_zone] = dfs[temperature_zone].mean()
-                    data_list.append(temp_data_dict)
-
-        thermal_model_data = pd.DataFrame(data_list).set_index('time')
-
-        print("Before drop", thermal_model_data.shape)
-        thermal_model_data = thermal_model_data.dropna()  # final drop. Mostly if the whole interval for the zones or t_out were nan.
-        print("After drop", thermal_model_data.shape)
-
-        return thermal_model_data
-
-    def _preprocess_thermal_data(self, zone_data, outside_data, evaluate_preprocess=False):
+    def preprocess_thermal_data(self, zone_data, outside_data, evaluate_preprocess=False):
         """Preprocesses the data for the thermal model.
         :param zone_data: dict{zone: pd.df columns["tin", "action"]}
         :param outside_data: pd.df columns["tout"]. 
         NOTE: outside_data freq has to be a multiple of zone_data frequency and has to have a higher freq.
 
-        :returns {zone: pd.df columns: t_in', 't_next', 'dt','t_out', 'action', 'a1', 'a2', [other mean zone temperatures]}
-                 where t_out and zone temperatures are the mean values over the intervals. 
-                 a1 is whether heating and a2 whether cooling."""
+        :returns {zone: pd.df columns: t_in', 't_next', 'dt','t_out', 'action', [other mean zone temperatures]}
+                 where t_out and zone temperatures are the mean values over the intervals. """
 
         # thermal data preprocess starts here
         all_temperatures = pd.concat([tstat_df["t_in"] for tstat_df in zone_data.values()], axis=1)
@@ -333,22 +276,15 @@ class ThermalDataManager:
                                            axis=1)  # should be copied data according to documentation
             thermal_model_data = thermal_model_data.rename(columns={"zone_temperature_" + zone: "t_in"})
 
-            # NOTE:
-            # The dataframe will have nan values because outside_temperature does not have same frequency as zone_data.
-            # Hence, we interpolate values linearly,
-            # since outside temperature does not need to be as accurate as inside data.
+            # Interpolate t_out values linearly, since t_out does not need to be as accurate as inside data.
             thermal_model_data["t_out"] = thermal_model_data["t_out"].interpolate()
 
-            # From here on preprocessing data. Concatinating all time contigious datapoints which have the same action.
-            if evaluate_preprocess:
-                zone_thermal_model_data[zone] = self._evaluation_preprocess_zone_thermal_data(thermal_model_data)
-            else:
-                zone_thermal_model_data[zone] = self._preprocess_zone_thermal_data(thermal_model_data)
+            # Preprocessing data. Concatinating all time contigious datapoints which have the same action.
+            zone_thermal_model_data[zone] = self.preprocess_zone_thermal_data(thermal_model_data,
+                                                                               evaluate_preprocess=evaluate_preprocess)
 
             print('one zone preproccessed')
         return zone_thermal_model_data
-
-
 
     def thermal_data(self, start=None, end=None, days_back=60, evaluate_preprocess=False):
         """
@@ -364,14 +300,31 @@ class ThermalDataManager:
             end = utils.get_utc_now()
         if start is None:
             start = end - timedelta(days=days_back)
-        z, o = self._get_inside_data(start, end), self._get_outside_data(start, end)
+        z, o = self.get_inside_data(start, end), self.get_outside_data(start, end)
         # Take mean of all weather stations.
-        o = self._preprocess_outside_data(o.values())
+        o = self.preprocess_outside_data(o.values())
         print("Received Thermal Data from MDAL.")
-        return self._preprocess_thermal_data(z, o, evaluate_preprocess)
+        return self.preprocess_thermal_data(z, o, evaluate_preprocess)
 
 
 if __name__ == '__main__':
+    cfg = utils.get_config("ciee")
+    dataManager = ThermalDataManager(cfg, get_client())
+
+
+    to_from = pd.date_range(utils.get_utc_now() - datetime.timedelta(hours=1), utils.get_utc_now(), freq="1T")
+    thermal_data = pd.DataFrame(columns=["t_in", "t_out", "action"], index=to_from)
+
+    thermal_data["t_in"] = np.linspace(70, 80, thermal_data.shape[0])
+    thermal_data["t_out"] = np.linspace(60, 90, thermal_data.shape[0])
+
+    thermal_data["action"] = np.zeros(thermal_data.shape[0])
+    thermal_data["action"][0:20] = 1
+    thermal_data["action"][42:49] = np.nan
+    thermal_data["action"][18:24] = 2
+
+    print(thermal_data)
+    print(dataManager.preprocess_zone_thermal_data(thermal_data, evaluate_preprocess=True))
 
     # with open("./Buildings/avenal-animal-shelter/avenal-animal-shelter.yml", 'r') as ymlfile:
     #     cfg = yaml.load(ymlfile)
@@ -389,26 +342,26 @@ if __name__ == '__main__':
     # with open("demo_anmial_shelter", "wb") as f:
     #     pickle.dump(z, f)
     # print(z)
-    import pickle
-
-    with open("Buildings/avenal-recreation-center/avenal-recreation-center.yml") as f:
-        cfg = yaml.load(f)
+    # import pickle
+    #
+    # with open("Buildings/avenal-recreation-center/avenal-recreation-center.yml") as f:
+    #     cfg = yaml.load(f)
 
     # if cfg["Server"]:
     #     c = get_client(agent=cfg["Agent_IP"], entity=cfg["Entity_File"])
     # else:
-    c = get_client()
-
-    now = datetime.datetime(year=2018, month=06, day=01).replace(tzinfo=pytz.timezone("UTC"))
-
-    dataManager = ThermalDataManager(cfg, c)
-
-
-    o = dataManager._get_outside_data(now-datetime.timedelta(days=10), now)
-    o = dataManager._preprocess_outside_data(o.values())
-
-    grouper = o.groupby([pd.Grouper(freq='1H')])
-    print(grouper['t_out'].mean())
+    # c = get_client()
+    #
+    # now = datetime.datetime(year=2018, month=06, day=01).replace(tzinfo=pytz.timezone("UTC"))
+    #
+    # dataManager = ThermalDataManager(cfg, c)
+    #
+    #
+    # o = dataManager._get_outside_data(now-datetime.timedelta(days=10), now)
+    # o = dataManager._preprocess_outside_data(o.values())
+    #
+    # grouper = o.groupby([pd.Grouper(freq='1H')])
+    # print(grouper['t_out'].mean())
 
     # zo = o.values()[0]
     # print zo.iloc[zo.shape[0]/2 - 5:]

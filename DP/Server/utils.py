@@ -24,7 +24,7 @@ import ThermalDataManager
 SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(__file__)  # this is true for now
 
 sys.path.append(SERVER_DIR_PATH + "/Lights")
-import lights
+# import lights
 
 try:
     import pygraphviz
@@ -53,7 +53,7 @@ FAN = 3
 TWO_STAGE_HEATING_ACTION = 4
 TWO_STAGE_COOLING_ACTION = 5
 
-SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(__file__)  # this is true for now
+SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(os.path.abspath(__file__))  # this is true for now
 
 '''
 Utility functions
@@ -173,18 +173,18 @@ def get_datetime_to_string(date_object):
 # ============ DATA FUNCTIONS ============
 
 
-def prediction_test( X, thermal_model, is_two_stage):
+def prediction_test( X, thermal_model, is_two_stage=False):
     """Takes the data X and for each datapoint runs the thermal model for each possible actions and 
     sees if the prediction we would get is consistent and sensible. i.e. temperature change for heating is more than for 
     cooling etc. 
-    Note, relies on having set self.is_two_stage to know if we are predicting two stage cooling data. """
+    Note, relies on having is_two_stage to know if we are predicting two stage cooling data. """
 
     # get predictions for every action possible.
     def predict_action(X, action, thermal_model):
         unit_actions = np.ones(X.shape[0])
         X_copy = X.copy()
         X_copy["action"] = unit_actions * action
-        return thermal_model.predict(X_copy)
+        return thermal_model.predict(X_copy, should_round=False)
 
     def consistency_check(row, is_two_stage):
         """check that the temperatures are in the order we expect them. Heating has to be strictly more than no
@@ -276,16 +276,6 @@ def prediction_test( X, thermal_model, is_two_stage):
     sensibility_filter = sensibility_check(predictions_action, is_two_stage, sensibility_measure=20)
 
     return consistent_filter.values & sensibility_filter
-
-def and_dictionary(a_dict, b_dict):
-    """
-    Takes the and of two boolean dictionaries with same keys.
-    :param a_dict: boolean dictionary
-    :param b_dict: boolean dictionary
-    :return: dictionary of length a_dict with the and of both dictionaries
-    """
-    assert a_dict.keys() == b_dict.keys()
-    return {iter_zone: a_dict[iter_zone] and b_dict[iter_zone] for iter_zone in a_dict.keys()}
 
 
 def round_increment(data, precision=0.05):
@@ -621,9 +611,6 @@ def get_outside_temperatures(building_config, start, end, data_manager, thermal_
     :param interval: (int minutes) interval of the returned timeseries in minutes. 
     :return: pd.Series with combined data of historic and prediction outside weather. 
     """
-    # we might have that the given now is before the actual current time
-    # hence need to get historic data and combine with weather predictions.
-
     # For finding out if start or/and end are before or after the current time.
     utc_now = get_utc_now()
 
@@ -635,53 +622,21 @@ def get_outside_temperatures(building_config, start, end, data_manager, thermal_
     end_cfg_timezone = end.astimezone(tz=cfg_timezone)
     now_cfg_timezone = utc_now.astimezone(tz=cfg_timezone)
 
-    # If simulation window is partially in the past and in the future
-    if in_between_datetime(utc_now, start_utc, end_utc):
-        historic_start_utc = start_utc
-        historic_end_utc = utc_now
-        future_start_utc = utc_now
-        future_end_utc = end_utc
-
-        historic_start_cfg_timezone = start_cfg_timezone
-        historic_end_cfg_timezone = now_cfg_timezone
-        future_start_cfg_timezone = now_cfg_timezone
-        future_end_cfg_timezone = end_cfg_timezone
-
-    # If simulation window is fully in the future
-    elif start_utc >= utc_now:
-        historic_start_utc = None
-        historic_end_utc = None
-        future_start_utc = start_utc
-        future_end_utc = end_utc
-
-        historic_start_cfg_timezone = None
-        historic_end_cfg_timezone = None
-        future_start_cfg_timezone = start_cfg_timezone
-        future_end_cfg_timezone = end_cfg_timezone
-
-    # If simulation window is fully in the past
-    else:
-        historic_start_utc = start_utc
-        historic_end_utc = end_utc
-        future_start_utc = None
-        future_end_utc = None
-
-        historic_start_cfg_timezone = start_cfg_timezone
-        historic_end_cfg_timezone = end_cfg_timezone
-        future_start_cfg_timezone = None
-        future_end_cfg_timezone = None
+    # Getting temperatures.
+    # Note, adding interval minute intervals to ensure that we get at least 1 interval from historic/future
 
     # Populating the outside_temperatures pd.Series for MPC use. Ouput is in cfg timezone.
     outside_temperatures = pd.Series(index=pd.date_range(start_cfg_timezone, end_cfg_timezone, freq=str(interval)+"T"))
-    if future_start_cfg_timezone is not None:
-        future_weather = data_manager.weather_fetch(start=future_start_cfg_timezone, end=future_end_cfg_timezone, interval=interval)
-        outside_temperatures[future_start_cfg_timezone:future_end_cfg_timezone] = future_weather.values
+    if now_cfg_timezone < end_cfg_timezone - datetime.timedelta(minutes=interval):
+        # Get future weather starting at either now time or start time. Start time only if it is in the future.
+        future_weather = data_manager.weather_fetch(start=max(now_cfg_timezone, start_cfg_timezone), end=end_cfg_timezone, interval=interval)
+        outside_temperatures[max(now_cfg_timezone, start_cfg_timezone):end_cfg_timezone] = future_weather.values
 
     # Combining historic data with outside_temperatures correctly if exists.
-    if historic_start_cfg_timezone is not None:
-        historic_weather = thermal_data_manager._get_outside_data(historic_start_utc,
-                                                                  historic_end_utc, inclusive=True)
-        historic_weather = thermal_data_manager._preprocess_outside_data(historic_weather.values()).squeeze()
+    if now_cfg_timezone > start_cfg_timezone + datetime.timedelta(minutes=interval):
+        historic_weather = thermal_data_manager.get_outside_data(start_utc,
+                                                                  min(end_utc, utc_now), inclusive=True)
+        historic_weather = thermal_data_manager.preprocess_outside_data(historic_weather.values()).squeeze()
 
 
         # Convert historic_weather to cfg timezone.
@@ -689,11 +644,11 @@ def get_outside_temperatures(building_config, start, end, data_manager, thermal_
 
         # Make sure historic weather has correct interval and start to end times.
         historic_weather = interpolate_to_start_end_range(historic_weather,
-                                                          historic_start_cfg_timezone, historic_end_cfg_timezone,
+                                                          start_cfg_timezone, min(end_cfg_timezone, now_cfg_timezone),
                                                           interval)
 
         # Populate outside data
-        outside_temperatures[historic_start_cfg_timezone:historic_end_cfg_timezone] = historic_weather.values
+        outside_temperatures[start_cfg_timezone:min(end_cfg_timezone, now_cfg_timezone)] = historic_weather.values
 
     return outside_temperatures
 

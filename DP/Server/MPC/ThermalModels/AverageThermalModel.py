@@ -15,7 +15,7 @@ import utils
 # used to find best thermal model.
 class AverageThermalModel(ParentThermalModel):
 
-    def __init__(self, thermal_precision=0.05, learning_rate=0.00001):
+    def __init__(self, interval_thermal, thermal_precision=0.05, learning_rate=0.00001):
         '''
 
         :param thermal_precision: the number of decimal points when predicting.
@@ -28,7 +28,7 @@ class AverageThermalModel(ParentThermalModel):
         self.thermal_precision = thermal_precision
         self.learning_rate = learning_rate  # TODO evaluate which one is best.
 
-        super(AverageThermalModel, self).__init__(thermal_precision) # TODO What to do with Learning rate ?
+        super(AverageThermalModel, self).__init__(thermal_precision, interval_thermal=interval_thermal)  # TODO What to do with Learning rate ?
 
 
     # ========== average learning ========

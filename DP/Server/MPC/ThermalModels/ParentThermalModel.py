@@ -64,7 +64,7 @@ class ParentThermalModel:
 
         # TODO. Give this class a field which tells it what the standard interval prediction is. And given dt to predict
         # TODO continiously predict to nearest multiple.
-    def predict(self, X, should_round=True):
+    def predict(self, X, should_round=False):
         """Predicts the temperatures for each row in X.
         :param X: pd.df/pd.Series with columns ('t_in', 'a1', 'a2', 't_out', 'dt') and all zone temperatures where all 
         have to begin with "zone_temperature_" + "zone name"
@@ -83,22 +83,6 @@ class ParentThermalModel:
             predictions = utils.round_increment(predictions, self.thermal_precision)
         else:
             predictions = predictions
-
-        # # consistancy check. Hard coded.
-        # actions = X["action"]
-        # inside_temperature = X["t_in"]
-        # for i in range(len(predictions)):
-        #     pred = predictions[i]
-        #     action = actions[i]
-        #     tin = inside_temperature[i]
-        #     if action == utils.HEATING_ACTION or action == utils.TWO_STAGE_HEATING_ACTION:
-        #         if pred <= tin:
-        #             pred = tin + self.thermal_precision
-        #     elif action == utils.COOLING_ACTION or action == utils.TWO_STAGE_COOLING_ACTION:
-        #         if pred >= tin:
-        #             pred = tin - self.thermal_precision
-        #
-        #     predictions[i] = pred
 
         return predictions
 
@@ -133,7 +117,7 @@ class ParentThermalModel:
         y = y[filter_arr]
 
         # Predict on filtered data
-        prediction = self.predict(X)  # only need to predict for relevant actions
+        prediction = self.predict(X, should_round=False)  # only need to predict for relevant actions
 
         # Get model error
         rmse, mean_error, std = self._RMSE_STD(prediction, y)

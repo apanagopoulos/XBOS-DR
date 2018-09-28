@@ -22,7 +22,12 @@ sys.path.insert(0, '../Utils')
 sys.path.append("./Lights")
 import MPCLogger
 
+from ThermalCollectorOptimizer import Schedule_Optimizer
+from ThermalCollectorOptimizer import create_schedule
+
 from xbos.services.hod import HodClient
+from xbos import get_client
+
 
 
 # TODO set up a moving average for how long it took for action to take place.
@@ -37,7 +42,7 @@ def hvac_control(cfg_building, cfg_zones, tstats, thermal_model, zones, building
     :param thermal_model:
     :param zones: (list str) list of zones for which to run hvac control
     :param start: datetime object in UTC which tells the control what now is.
-    :param debug: wether to actuate the tstat.
+    :param debug: wether to print debug messages. 
     :param actuate_zones: {zone: boolean} whether to actuate the zone.
     :return: boolean, dict. Success Boolean indicates whether writing action has succeeded. Dictionary {cooling_setpoint: float,
     heating_setpoint: float, override: bool, mode: int} and None if success boolean is flase.
@@ -210,7 +215,7 @@ class ZoneThread(threading.Thread):
             raise Exception("ERROR: Wanting to optimize with DP but did not give DP class.")
         if optimization_type == "LP" and lp_optimizer is None:
             raise Exception("ERROR: Wanting to optimize with LP but did not give LP class.")
-        if optimization_type not in ["DP", "LP"]:
+        if optimization_type not in ["DP", "LP", "Schedule"]:
             raise Exception("ERROR: Did not give a valid optimization type argument.")
 
         # setting optimizers which are shared between threads.
@@ -295,10 +300,6 @@ class ZoneThread(threading.Thread):
                                         and not debug
                              for iter_zone, start_end in actuation_start_end_cfg_tz.items()}
 
-            # Keeps track of zones where the optimization and normal schedule worked (weather for simulation or
-            # normal acutation).
-            did_succeed_zones = {iter_zone: False for iter_zone in self.zones}
-
             # set variable to store message data for each zone. i.e. The message we would like to send or sent to tstat.
             message_data_zones = {}
 
@@ -341,70 +342,49 @@ class ZoneThread(threading.Thread):
 
                 # Set a dictionary for zones that need to be actuated but have not yet been successful
                 # and which can be actuated through the MPC.
-                should_actuate_zones_mpc = {iter_zone: actuate_zones[iter_zone] and not did_succeed_zones[iter_zone]
-                                                       and run_mpc_zones[iter_zone]
+                should_actuate_zones_mpc = {iter_zone: actuate_zones[iter_zone] and
+                                                        run_mpc_zones[iter_zone]
                                             for iter_zone in self.zones}
 
                 # Running the MPC if possible.
                 if any(run_mpc_zones.values()):
-                    # Run MPC. Try up to cfg_zone["Advise"]["Thermostat_Write_Tries"] to find and write action.
-                    try_count_zones = {iter_zone: 0 for iter_zone in self.zones}
 
-                    # set that all zones have not succeeded yet.
-                    succeeded_zones = {iter_zone: False for iter_zone in self.zones}
 
-                    while not all(succeeded_zones.values()) and any(run_mpc_zones.values()):
-                        if self.optimization_type == "DP":
-                            succeeded_zones, action_data = hvac_control(cfg_building, cfg_zones, self.tstats,
-                                                                        self.thermal_models,
-                                                                        self.zones, self.building, now_utc,
-                                                                        consumption_storage=self.consumption_storage,
-                                                                        debug=self.debug,
-                                                                        actuate_zones=should_actuate_zones_mpc,
-                                                                        optimizer=self.dp_optimizer, client=self.client)
-                        elif self.optimization_type == "LP":
-                            succeeded_zones, action_data = hvac_control(cfg_building, cfg_zones, self.tstats,
-                                                                        self.thermal_models,
-                                                                        self.zones, self.building, now_utc,
-                                                                        consumption_storage=self.consumption_storage,
-                                                                        debug=self.debug,
-                                                                        actuate_zones=should_actuate_zones_mpc,
-                                                                        optimizer=self.lp_optimizer, client=self.client)
+                    if self.optimization_type == "DP":
+                        succeeded_zones, action_data = hvac_control(cfg_building, cfg_zones, self.tstats,
+                                                                    self.thermal_models,
+                                                                    self.zones, self.building, now_utc,
+                                                                    consumption_storage=self.consumption_storage,
+                                                                    debug=self.debug,
+                                                                    actuate_zones=should_actuate_zones_mpc,
+                                                                    optimizer=self.dp_optimizer, client=self.client)
+                    elif self.optimization_type == "LP":
+                        succeeded_zones, action_data = hvac_control(cfg_building, cfg_zones, self.tstats,
+                                                                    self.thermal_models,
+                                                                    self.zones, self.building, now_utc,
+                                                                    consumption_storage=self.consumption_storage,
+                                                                    debug=self.debug,
+                                                                    actuate_zones=should_actuate_zones_mpc,
+                                                                    optimizer=self.lp_optimizer, client=self.client)
+                    elif self.optimization_type == "Schedule":
+                        succeeded_zones, action_data = hvac_control(cfg_building, cfg_zones, self.tstats,
+                                                                    self.thermal_models,
+                                                                    self.zones, self.building, now_utc,
+                                                                    consumption_storage=self.consumption_storage,
+                                                                    debug=self.debug,
+                                                                    actuate_zones=should_actuate_zones_mpc,
+                                                                    optimizer=self.normal_schedule, client=self.client)
 
-                        # Increment the counter and set the flag for the normal schedule if the MPC failed too often.
-                        # Add one since we tried once and didn't succeed.
-                        for iter_zone, iter_zone_succeeded in succeeded_zones.items():
-                            if not iter_zone_succeeded and not did_succeed_zones[iter_zone]:
-                                try_count_zones[iter_zone] += 1
-                            elif iter_zone_succeeded and not did_succeed_zones[iter_zone]:
-                                # If succeeded then we actuated and don't need to actuate any more.
-                                # Also, set setpoints that were executed.
-                                message_data_zones[iter_zone] = action_data[iter_zone]
-                                should_actuate_zones_mpc[iter_zone] = False
-                                did_succeed_zones[iter_zone] = True
-
-                        # If not all succeeded, then we should wait and try again. If it failed too often, normal
-                        # schedule needs to be called.
-                        if not all(succeeded_zones.values()):
-                            time.sleep(10)
-                            for iter_zone, cfg_zone in cfg_zones.items():
-                                if try_count_zones[iter_zone] == cfg_zone["Advise"]["Thermostat_Write_Tries"]:
-                                    self.mutex.acquire()
-                                    print("Problem with MPC for zone %s, entering normal schedule." % iter_zone)
-                                    print("")
-                                    self.mutex.release()
-                                    run_mpc_zones[iter_zone] = False
-
-                            # Don't log failure, as it is implied when the Normal schedule logs its action.
+                    # Don't log failure, as it is implied when the Normal schedule logs its action.
 
                     # Log this action if succeeded.
-                    if all(succeeded_zones.values()):
-                        # TODO If we are in an interval that overlaps with the end of the DR event then
-                        # part of the optimization for one interval is in DR and the other outside. We should account
-                        # for this.
-                        for iter_zone, cfg_zone in cfg_zones.items():
-                            # we want to know that we succeeded with all the zones here.
-                            did_succeed_zones[iter_zone] = True
+                    # TODO If we are in an interval that overlaps with the end of the DR event then
+                    # part of the optimization for one interval is in DR and the other outside. We should account
+                    # for this.
+                    for iter_zone, cfg_zone in cfg_zones.items():
+                        message_data_zones[iter_zone] = action_data[iter_zone]
+                        # we want to know that we succeeded with all the zones here.
+                        if succeeded_zones[iter_zone]:
 
                             # Do the log here
                             is_dr = utils.is_DR(now_cfg_timezone, cfg_building)
@@ -420,10 +400,10 @@ class ZoneThread(threading.Thread):
                                               mpc_lambda=mpc_lambda, shut_down_system=False)
 
                 # Running the normal Schedule
-                if not all(run_mpc_zones.values()):
+                if not all(run_mpc_zones.values()) or not all(succeeded_zones.values()):
                     # Set a dictionary for zones that need to be actuated but have not yet been successful.
                     should_actuate_zones_schedule = {iter_zone: actuate_zones[iter_zone]
-                                                                and not did_succeed_zones[iter_zone]
+                                                                and succeeded_zones[iter_zone]
                                                                 and not run_mpc_zones[iter_zone]
                                                      for iter_zone in self.zones}
 
@@ -536,7 +516,7 @@ class ZoneThread(threading.Thread):
 
             # Checking if manual setpoint changes occurred given that we successfully actuated that zone.
             for iter_zone, actuate_zone in actuate_zones.items():
-                if actuate_zone and did_succeed_zones[iter_zone]:
+                if actuate_zone and succeeded_zones[iter_zone]:
                     action_data_zone = action_data_zones[iter_zone]
                     # end program if setpoints have been changed. (If not writing to tstat we don't want this)
                     if action_data_zone is not None and utils.has_setpoint_changed(self.tstats[iter_zone],
@@ -564,7 +544,7 @@ class ZoneThread(threading.Thread):
             for iter_zone in self.zones:
                 utils.set_override_false(self.tstats[iter_zone])
 
-        # making sure that the barrier does not account for this zone anymore.
+        # making sure that the barrier does not account for this thread anymore.
         self.mutex.acquire()
         self.barrier.num_threads -= 1
         self.mutex.release()
@@ -592,15 +572,18 @@ def main(building, optimization_type, simulate=False, debug=True, run_server=Tru
 
     # Set building fields.
     zones = utils.get_zones(building)
+    if "jesse" in building:
+        new_zones = []
+        for iter_zone in zones:
+            if "basketball" in iter_zone:
+                new_zones.append(iter_zone)
+        print(new_zones)
     cfg_building = utils.get_config(building)
 
     # Get the client.
     # It will try to use the Server details given in the config file if run_server is true.
     # Otherwise it will run the local xbos version.
-    if run_server:
-        client = utils.choose_client(cfg_building)
-    else:
-        client = utils.choose_client()
+    client = get_client()
 
     # Get hod client.
     hod_client = HodClient("xbos/hod", client)
@@ -642,7 +625,10 @@ def main(building, optimization_type, simulate=False, debug=True, run_server=Tru
     # Get all the optimizers and normal schedule
     dp_optimizer = IteratedDP(building, client, len(tstats_control.keys()), num_iterations=1)
     lp_optimizer = AdviseLinearProgram(building, client, num_threads=1, debug=False)
-    normal_schedule = NormalSchedule(building, client, num_threads=len(tstats_control.keys()), debug=None)
+    now_utc = utils.get_utc_now()
+    normal_schedule = Schedule_Optimizer(building, client, schedule=create_schedule(start=now_utc,
+                                                                                    end=now_utc + datetime.timedelta(hours=10),
+                                                                                    building=building, zones=zones))
 
     # Set consumption storage
     consumption_storage = None
@@ -667,7 +653,7 @@ def main(building, optimization_type, simulate=False, debug=True, run_server=Tru
                                     simulate_start=start_simulation, simulate_end=end_simulation)
                 thread.start()
                 threads.append(thread)
-    elif optimization_type == "LP":
+    elif optimization_type == "LP" or optimization_type == "Schedule":
         # setting a barrier for the threads. this will be used in hvac_control for stopping all threads before setting
         # all zone_temperatures and weather for the thermalModel
         thread_barrier = utils.Barrier(1)
@@ -776,15 +762,46 @@ def ask_all_input():
 
     return building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation
 
+def set_stage(tstats, stages):
+    """
+    Sets tstats to given stages if zone in stages. 
+    :param tstats: 
+    :param stages: 
+    :return: The old stages. 
+    """
+    old_stages = defaultdict(dict)
+    for iter_zone, tstat in tstats.items():
+        if iter_zone in stages:
+            try:
+                old_cool_stages, old_heat_stages = tstat.enabled_cool_stages, tstat.enabled_heat_stages
+                print iter_zone, "original stages:", old_cool_stages, old_heat_stages
+
+                # set old stages
+                old_stages[iter_zone]["cool"] = old_cool_stages
+                old_stages[iter_zone]["heat"] = old_heat_stages
+
+                # set to new state state
+                tstat.set_enabled_heat_stages(stages[iter_zone]["heat"])
+                tstat.set_enabled_cool_stages(stages[iter_zone]["cool"])
+            except:
+                print("Exception occurred when setting %s. Zone will not be set." % iter_zone)
+
+    return old_stages
+
+
+def set_single_stage(tstats, zones):
+    """Sets all zones to single stages."""
+    return set_stage(tstats, {iter_zone: {"cool": 1, "heat": 1} for iter_zone in zones})
+
 if __name__ == '__main__':
 
     # building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation = ask_all_input()
 
 
     # DEBUG PURPOSES
-    building = "ciee"
+    building = "jesse-turner-center"
     optimization_type = "LP"
-    simulate = True
+    simulate = False
     debug = True
     run_server = False
     start_simulation = datetime.datetime(year=2018, month=8, day=21, hour=10, minute=0)

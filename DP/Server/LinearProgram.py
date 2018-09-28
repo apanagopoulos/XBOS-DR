@@ -231,7 +231,7 @@ class LinearProgram:
         # The total cost
         self.total_cost = None
 
-    def set_inside_temperature(self):
+    def _set_inside_temperature(self):
         """
         Sets the inside temperature constraints for each zone.
         NOTE: Now just using a constant model. If heat we add 0.1 degrees and when cool we subtract.
@@ -280,6 +280,26 @@ class LinearProgram:
                                          (prev_temperature - t_out - biases[0]) * coeffs[4] +
                                          (-biases[1])* coeffs[5]+
                                          other_zone_contribution)
+
+    def set_inside_temperature(self):
+        """
+        Sets the inside temperature constraints for each zone.
+        NOTE: Now just using a constant model. If heat we add 0.1 degrees and when cool we subtract.
+        :return: None
+        """
+        HEAT = 0.1
+        COOL = -0.1
+        # Using the timesteps as outer loop for when having to link the zone temperatures.
+        # We already know 0th time, so no need to set it.
+        for time in range(1, self.num_timesteps):
+            for zone in self.zones:
+                last_temperature = self.t_in[zone][time - 1]
+                # getting the action for last interval. because that is when we start and advance forward.
+                action_cooling = self.action_cooling[zone][time - 1]
+                action_heating = self.action_heating[zone][time - 1]
+
+                self.lp_solver.addConstr(self.t_in[zone][time] == last_temperature +
+                                         action_cooling * COOL + action_heating * HEAT)
 
 
     def set_discomfort(self):

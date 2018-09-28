@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.append("..")
+sys.path.append("../..")
 import utils
 from ParentThermalModel import ParentThermalModel
 
@@ -158,11 +159,11 @@ if __name__ == '__main__':
 
     sys.path.append("./ThermalModels")
     from AverageThermalModel import AverageThermalModel
-    building = "avenal-veterans-hall"
+    building = "ciee"
     thermal_data = utils.get_data(building=building, days_back=100, evaluate_preprocess=False, force_reload=False)
 
-    model = ThermalModel()
-    avg_model = AverageThermalModel()
+    model = LinearThermalModel(interval_thermal=5)
+    avg_model = AverageThermalModel(interval_thermal=5)
     zone, zone_data = thermal_data.items()[0]
 
     zone_data = zone_data[zone_data["dt"] == 5]
@@ -195,11 +196,32 @@ if __name__ == '__main__':
 
     print("avg coeff", avg_model._params)
 
-    # utils.apply_consistency_check_to_model(thermal_model=model)
+    filter_data = utils.prediction_test(zone_data, thermal_model=model)
+    # Get all insensible predictions.
+    filter_data = filter_data == 0
+    print("Number of data", zone_data.shape[0])
+    print("Number of insensible", sum(filter_data))
+    print("Inconsistent", zone_data[filter_data])
+    # print("Predicted", model.predict(zone_data[filter_data]) - zone_data[filter_data]["t_in"])
+
+    new_data = zone_data[filter_data]
+
+    #heating
+    new_data["action"] = np.ones(sum(filter_data))
+    heating_predict = model.predict(new_data, should_round=False) - new_data["t_in"]
+    # cooling
+    new_data["action"] = np.ones(sum(filter_data))*2
+    cooling_predict = model.predict(new_data, should_round=False) - new_data["t_in"]
+    # no action
+    new_data["action"] = np.ones(sum(filter_data))*0
+    no_predict = model.predict(new_data, should_round=False) - new_data["t_in"]
+
+    print(pd.DataFrame({"heating":heating_predict, "cooling":cooling_predict, "no action": no_predict}))
+
 
     #(Tin, action, Tout, dt, rest of zone temperatures)
     X = np.array([[75, 0, 75, 5, 75, 75, 75]]).T
-    print(model.predict(X))
+    print(model.predict(X, should_round=False))
     # print(model._func(X))
     # print(model.predict(X))
 

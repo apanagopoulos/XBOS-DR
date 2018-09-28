@@ -170,7 +170,7 @@ def evaluate_zone_data(data, find_single_actions=False):
     # ======= Find data where heating happened but temperature dropped even though all other zones/outside temperatures
     # where higher ===========
     print("--------- Find data where heating happened but temperature dropped even though all other "
-          "zones/outside temperatures where higher ---------")
+          "zones/outside temperatures were higher ---------")
     row_filter = ["zone_temperature_" in col for col in data.columns]
 
     res = []
