@@ -63,6 +63,7 @@ class DataManager:
         self.c = client
 
     # TODO NEED TO BE REPLACED by better occupancy data methods.
+    @property
     def preprocess_occ_mdal(self):
         """
         Returns the required dataframe for the occupancy predictions
@@ -74,7 +75,6 @@ class DataManager:
                         self.c)  # TODO MAKE THIS WORK WITH FROM AND xbos/hod, FOR SOME REASON IT DOES NOT
 
         occ_query = """SELECT ?sensor ?uuid ?zone FROM %s WHERE {
-
                       ?sensor rdf:type brick:Occupancy_Sensor .
                       ?sensor bf:isPointOf/bf:isPartOf ?zone .
                       ?sensor bf:uuid ?uuid .
@@ -215,75 +215,7 @@ class DataManager:
             df_occupancy.loc[start:end, "occ"] = float(occ)
         return df_occupancy
 
-    def weather_fetch(self, start, end, interval, fetch_attempts=10):
-        """Gets the weather predictions from weather.gov
-        :param start: (datetime timezone_aware) when in the future the predictions should start
-        :param end: (datetime timezone_aware) when the weather fetch should end. inclusive
-        :param interval: frequency of data in minutes. 
-        :param fetch_attempts: (int) number of attempts we should try to get weather from weather.gov
-        :return pd.series with date range from start to end in freq=interval minutes"""
-        from dateutil import parser
 
-        now = utils.get_utc_now()
-        now_cfg_timezone = now.astimezone(tz=self.pytz_timezone)
-
-        start_cfg_tz = start.astimezone(tz=self.pytz_timezone)
-        end_cfg_tz = end.astimezone(tz=self.pytz_timezone)
-
-        # we should get about 6 days of data with each weather fetch i think.
-        assert start_cfg_tz <= end_cfg_tz <= now + datetime.timedelta(days=6)
-
-        # Try to get data from weather data that was saved.
-        file_name = "./weather/weather_" + self.zone + "_" + self.controller_cfg["Building"] + ".pkl"
-        if os.path.exists(file_name):
-            try:
-                weather_data = pd.read_pickle(file_name)
-                # Checking if the start and end times are in the data range and also ensuring that our data is not more
-                # than a day old.
-                if weather_data.index[0] <= start_cfg_tz <= end_cfg_tz <= weather_data.index[-1] \
-                        and weather_data.index[0] <= now_cfg_timezone + datetime.timedelta(days=1):
-                    return utils.interpolate_to_start_end_range(weather_data, start_cfg_tz, end_cfg_tz, interval)
-            except:
-                os.remove(file_name)
-
-
-        # attempt to fetch weather from weather.gove
-        try_counter = 0
-        weather_fetch_successful = False
-        coordinates = self.controller_cfg["Coordinates"]
-        while not weather_fetch_successful and try_counter <= fetch_attempts:
-            try:
-                weather_meta = requests.get("https://api.weather.gov/points/" + coordinates).json()
-                weather_json = requests.get(weather_meta["properties"]["forecastHourly"])
-                weather_data_dictionary = weather_json.json()
-
-                weather_fetch_successful = True
-            except:
-                try_counter += 1
-
-        # If we couldn't get data, then we need to raise an exception.
-        if not weather_fetch_successful:
-            raise Exception("ERROR, Could not get good data from weather service.")
-
-        # convert the data to a pandas Series.
-        weather_times = []
-        weather_temperatures = []
-        weather_temperature_unit = []
-        for row in weather_data_dictionary["properties"]["periods"]:
-            weather_times.append(parser.parse(row["startTime"]))
-            weather_temperatures.append(row["temperature"])
-            weather_temperature_unit.append(row["temperatureUnit"])
-            if weather_temperature_unit[-1] != "F":
-                raise Exception(
-                    "Weather fetch got data which was not Fahrenheit. It had units: %s" % weather_temperature_unit[-1])
-
-        weather_data = pd.Series(data=weather_temperatures, index=weather_times)
-
-        # store the data
-        weather_data.to_pickle(file_name)
-
-        # return data interpolated to have it start and end at the given times.
-        return utils.interpolate_to_start_end_range(weather_data, start_cfg_tz, end_cfg_tz, interval)
 
 
 
@@ -585,7 +517,7 @@ class DataManager:
         :param date: The date for which we want to get the comfortband from config. Timezone aware.
         :param freq: The frequency of time series. Default is one minute.
         :return: pd.df columns=t_high, t_low with time_series index for the date provided and in timezone aware
-         datetime as provided by the configuration file. 
+         datetime as provided by the configuration file.
         """
         # Set the date to the controller timezone.
         date = date.astimezone(tz=self.pytz_timezone)

@@ -5,7 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/DP/Server/PolicyEvaluations" isTestSource="false" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 2.7.10 virtualenv at ~/BETS/.venv-bets" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 2.7 (xbos-dr)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="Thermocat" />
   </component>

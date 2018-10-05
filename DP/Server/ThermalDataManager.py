@@ -55,7 +55,8 @@ class ThermalDataManager:
                   "past inconsistencies, but not enough data to compensate for the lost data by taking mean.")
 
         for i in range(len(outside_data)):
-            temp_data = outside_data[i]["t_out"].apply(lambda t: np.nan if t == 32 else t) # TODO this only works for fahrenheit now.
+            temp_data = outside_data[i]["t_out"].apply(
+                lambda t: np.nan if t == 32 else t)  # TODO this only works for fahrenheit now.
             outside_data[i]["t_out"] = temp_data
 
         # Note: Assuming same index for all weather station data returned by mdal
@@ -191,17 +192,17 @@ class ThermalDataManager:
         mdal_client = mdal.MDALClient("xbos/mdal", client=self.client)
         zone_thermal_data = {}
         for zone, dict in thermostat_query_data.items():
-
             mdal_query = {'Composition': [dict["tstat_temperature"], dict["tstat_action"]],
-                                        'Selectors': [mdal.MEAN, mdal.MEAN]
-                                           , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                                      'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
-                                                      'WindowSize': str(self.window_size) + 'min',
-                                                      'Aligned': True}}
+                          'Selectors': [mdal.MEAN, mdal.MEAN]
+                , 'Time': {'T0': start.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                           'T1': end.strftime('%Y-%m-%d %H:%M:%S') + ' UTC',
+                           'WindowSize': str(self.window_size) + 'min',
+                           'Aligned': True}}
 
             # get the thermostat data
             df = utils.get_mdal_data(mdal_client, mdal_query)
-            zone_thermal_data[zone] = df.rename(columns={dict["tstat_temperature"]: 't_in', dict["tstat_action"]: 'action'})
+            zone_thermal_data[zone] = df.rename(
+                columns={dict["tstat_temperature"]: 't_in', dict["tstat_action"]: 'action'})
 
         return zone_thermal_data
 
@@ -281,7 +282,7 @@ class ThermalDataManager:
 
             # Preprocessing data. Concatinating all time contigious datapoints which have the same action.
             zone_thermal_model_data[zone] = self.preprocess_zone_thermal_data(thermal_model_data,
-                                                                               evaluate_preprocess=evaluate_preprocess)
+                                                                              evaluate_preprocess=evaluate_preprocess)
 
             print('one zone preproccessed')
         return zone_thermal_model_data
@@ -310,7 +311,6 @@ class ThermalDataManager:
 if __name__ == '__main__':
     cfg = utils.get_config("ciee")
     dataManager = ThermalDataManager(cfg, get_client())
-
 
     to_from = pd.date_range(utils.get_utc_now() - datetime.timedelta(hours=1), utils.get_utc_now(), freq="1T")
     thermal_data = pd.DataFrame(columns=["t_in", "t_out", "action"], index=to_from)
@@ -396,4 +396,3 @@ if __name__ == '__main__':
     # end of the interval each time by redoing the loop a bit. While instead of for loop? only counts for contigious
     # actions. If we have chnage of actions, it seems like we need to drop datapoints? Ask gabe for preprocessing and
     # if there is a better way to get the data since then we might not loose some values.
-

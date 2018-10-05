@@ -21,10 +21,6 @@ import DataManager
 # https://stackoverflow.com/questions/11698530/two-python-modules-require-each-others-contents-can-that-work
 import ThermalDataManager
 
-SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(__file__)  # this is true for now
-
-sys.path.append(SERVER_DIR_PATH + "/Lights")
-# import lights
 
 try:
     import pygraphviz
@@ -59,6 +55,8 @@ SERVER_DIR_PATH = UTILS_FILE_PATH = os.path.dirname(os.path.abspath(__file__))  
 Utility functions
 '''
 
+sys.path.append(SERVER_DIR_PATH + "/Lights")
+# import lights
 
 # ============ BUILDING AND ZONE GETTER ========
 def choose_building_and_zone():
@@ -173,7 +171,7 @@ def get_datetime_to_string(date_object):
 # ============ DATA FUNCTIONS ============
 
 
-def prediction_test( X, thermal_model, is_two_stage=False):
+def prediction_test(X, thermal_model, is_two_stage=False):
     """Takes the data X and for each datapoint runs the thermal model for each possible actions and 
     sees if the prediction we would get is consistent and sensible. i.e. temperature change for heating is more than for 
     cooling etc. 
@@ -200,7 +198,7 @@ def prediction_test( X, thermal_model, is_two_stage=False):
         if is_two_stage:
             # can't have cooling that's higher than 0 and heating that's lower.
             if max(row["COOLING_ACTION"], row["TWO_STAGE_COOLING_ACTION"]) >= row["T_IN"] or \
-                            min(row["HEATING_ACTION"], row["TWO_STAGE_HEATING_ACTION"]) <= row["T_IN"]:
+                    min(row["HEATING_ACTION"], row["TWO_STAGE_HEATING_ACTION"]) <= row["T_IN"]:
                 return False
 
             # checks if the actions are in the correct order
@@ -218,7 +216,7 @@ def prediction_test( X, thermal_model, is_two_stage=False):
         else:
             # can't have cooling that's higher than 0 and heating that's lower.
             if row["COOLING_ACTION"] >= row["T_IN"] or \
-                            row["HEATING_ACTION"] <= row["T_IN"]:
+                    row["HEATING_ACTION"] <= row["T_IN"]:
                 return False
 
             # checks if the actions are in the correct order
@@ -246,7 +244,6 @@ def prediction_test( X, thermal_model, is_two_stage=False):
             differences.append(np.abs(X["TWO_STAGE_HEATING_ACTION"] - X["T_IN"]))
             differences.append(np.abs(X["TWO_STAGE_COOLING_ACTION"] - X["T_IN"]))
 
-
         # check if every difference is in sensible band and not nan. We can check if the prediction is nan
         # by checking if the difference is nan, because np.nan + x = np.nan
         sensibility_filter_array = [(diff < sensibility_measure) & (diff != np.nan) for diff in differences]
@@ -254,13 +251,12 @@ def prediction_test( X, thermal_model, is_two_stage=False):
         sensibility_filter_check = reduce(lambda x, y: x & y, sensibility_filter_array)
         return sensibility_filter_check.values
 
-
     no_action_predictions = predict_action(X, NO_ACTION, thermal_model)
     heating_action_predictions = predict_action(X, HEATING_ACTION, thermal_model)
-    cooling_action_predictions = predict_action(X,  COOLING_ACTION, thermal_model)
+    cooling_action_predictions = predict_action(X, COOLING_ACTION, thermal_model)
     if is_two_stage:
-        two_stage_heating_predictions = predict_action(X,  TWO_STAGE_HEATING_ACTION, thermal_model)
-        two_stage_cooling_predictions = predict_action(X,  TWO_STAGE_COOLING_ACTION, thermal_model)
+        two_stage_heating_predictions = predict_action(X, TWO_STAGE_HEATING_ACTION, thermal_model)
+        two_stage_cooling_predictions = predict_action(X, TWO_STAGE_COOLING_ACTION, thermal_model)
     else:
         two_stage_cooling_predictions = None
         two_stage_heating_predictions = None
@@ -385,104 +381,6 @@ def get_zone_log(building, zone):
     return log
 
 
-# Maybe put in ThermalDataManager because of circular import.
-def get_data(building=None, client=None, cfg=None, start=None, end=None, days_back=50, evaluate_preprocess=False,
-             force_reload=False):
-    """
-    Get preprocessed data.
-    :param building: (str) building name
-    :param cfg: (dictionary) config file for building. If none, the method will try to find it. 
-    :param days_back: how many days back from current moment.
-    :param evaluate_preprocess: (Boolean) should controller data manager add more features to data.
-    :param force_reload: (boolean) If some data for this building is stored, the reload if not force reload. Otherwise,
-                        load data as specified.
-    :param start: the start time for the data. If none is given, we will use days_back to go back from the
-                     end datetime if given (end - days_back), or the current time.
-    :param end: the end time for the data. If given, we will use it as our end. If not given, we will use the current 
-                    time as the end.
-    :return: {zone: pd.df with columns according to evaluate_preprocess}
-    """
-    assert cfg is not None or building is not None
-    if cfg is not None:
-        building = cfg["Building"]
-    else:
-        cfg = get_config(building)
-
-    print("----- Get data for Building: %s -----" % building)
-
-    if evaluate_preprocess:
-        path = SERVER_DIR_PATH + "/Thermal_Data/" + building + "_eval"
-    else:
-        path = SERVER_DIR_PATH + "/Thermal_Data/" + building
-
-    if end is None:
-        end = get_utc_now()
-    if start is None:
-        start = end - datetime.timedelta(days=days_back)
-
-    # TODO ugly try/except
-    try:
-        assert not force_reload
-        print(path)
-        with open(path, "r") as f:
-            import pickle
-            thermal_data = pickle.load(f)
-    except:
-        if client is None:
-            client = choose_client(cfg)
-        dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
-        thermal_data = dataManager.thermal_data(start=start, end=end, evaluate_preprocess=evaluate_preprocess)
-        with open(path, "wb") as f:
-            import pickle
-            pickle.dump(thermal_data, f)
-    return thermal_data
-
-
-def get_raw_data(building=None, client=None, cfg=None, start=None, end=None, days_back=50, force_reload=False):
-    assert cfg is not None or building is not None
-    if cfg is not None:
-        building = cfg["Building"]
-    else:
-        config_path = SERVER_DIR_PATH + "/Buildings/" + building + "/" + building + ".yml"
-        try:
-            with open(config_path, "r") as f:
-                cfg = yaml.load(f)
-        except:
-            print("ERROR: No config file for building %s with path %s" % (building, config_path))
-            return
-
-    print("----- Get data for Building: %s -----" % building)
-
-    path = SERVER_DIR_PATH + "/Thermal_Data/" + building
-    # TODO ugly try/except
-
-    if end is None:
-        end = get_utc_now()
-    if start is None:
-        start = end - datetime.timedelta(days=days_back)
-
-    # inside and outside data data
-    import pickle
-    try:
-        assert not force_reload
-        with open(path + "_inside", "r") as f:
-            inside_data = pickle.load(f)
-        with open(path + "_outside", "r") as f:
-            outside_data = pickle.load(f)
-    except:
-        if client is None:
-            client = get_client()
-        dataManager = ThermalDataManager.ThermalDataManager(cfg, client)
-
-        inside_data = dataManager._get_inside_data(start, end)
-        outside_data = dataManager._get_outside_data(start, end)
-        with open(path + "_inside", "wb") as f:
-            pickle.dump(inside_data, f)
-        with open(path + "_outside", "wb") as f:
-            pickle.dump(outside_data, f)
-    return inside_data, outside_data
-
-
 def get_mdal_data(mdal_client, query):
     """Gets mdal data. Necessary method because if a too long time frame is queried, mdal does not return the data.
     :param mdal_client: mdal object to query data.
@@ -561,96 +459,70 @@ def get_mdal_data(mdal_client, query):
     return pd.concat(outside_data)
 
 
-def concat_zone_data(thermal_data):
-    """Concatinates all thermal data zone data into one big dataframe. Will sort by index. Get rid of all zone_temperature columns.
-    :param thermal_data: {zone: pd.df}
-    :return pd.df without zone_temperature columns"""
-    concat_data = pd.concat(thermal_data.values()).sort_index()
-    filter_columns = ["zone_temperature" not in col for col in concat_data.columns]
-    return concat_data[concat_data.columns[filter_columns]]
-
-
-def as_pandas(result):
-    time = result[list(result.keys())[0]][:, 0]
-    df = pd.DataFrame(time, columns=['Time'])
-    df['Time'] = pd.to_datetime(df['Time'], unit='s')
-
-    for key in result:
-        df[key] = result[key][:, 1].tolist()
-        try:
-            df[key + " Var"] = result[key][:, 2].tolist()
-        except IndexError:
-            pass
-
-    df = df.set_index('Time')
-    return df
-
-
-def interpolate_to_start_end_range(data, start, end, interval):
+def smart_resample(data, start, end, interval, method="pad"):
     """
-    Returns data but indexed with start to end in frequency of interval minutes. Interpolate the data when
-    needed. Interpolating should give a fine approximation. However, while the new intervals represent the mean 
-    temperatures of the time interval given, the mean of them throughout an hour will not necessarily be the
-    mean from which we started from. 
-    :param data: pd.series/pd.df has to have time series index which can contain a span from start to end.
-    :param start: the start of the data we want
-    :param end: the end of the data we want
+    Returns data indexed with start to end in frequency of interval minutes. Use 'pad' on the data when
+    needed and taking time weighted average to group data into interval groups. Assumes value is constant throughout
+    the corresponding time until the next datapoints time.
+    :param data: pd.series/pd.df has to have time series index which can contain a span from start to end. Timezone aware.
+    :param start: the start of the data we want. Timezone aware
+    :param end: the end of the data we want (not inclusive). Timezone aware
     :param interval: minutes for the interval
-    :return: data but with index of pd.date_range(start, end, interval)
+    :param method: (optional string) How to fill nan values. Usually use pad (forward fill for setpoints) and
+                            use "interpolate" for approximate linear processes (like outside temperature. For inside
+                            temperature we would need an accurate thermal model.)
+    :return: data with index of pd.date_range(start, end, interval). Returned in timezone of start.
+    NOTE: - If (end - start) not a multiple of interval, then we choose end = start + (end - start)//inteval * interval.
+                But the new end will not be inclusive.
+          - If end is beyond the end of the data, it will assume that the last value has been constant until the
+              given end.
+          - All datetime object should have the same timezone.
+          - TODO Evaluate with different timezones.
     """
-    # https://stackoverflow.com/questions/40034040/pandas-timeseries-resampling-and-interpolating-together
+    # make sure that the start and end dates are valid.
+    data = data.sort_index()
+    assert start <= end
+    assert start >= data.index[0]
+    if end - datetime.timedelta(minutes=interval) > data.index[-1]:
+        print("Warning: the given end is more than one interval after the last datapoint in the given data. %s minutes after end of data."
+              % str((end - data.index[-1]).total_seconds()/60.))
+
+    # add date_range and fill nan's through the given method.
     date_range = pd.date_range(start, end, freq=str(interval) + "T")
-    return data.reindex(date_range.union(data.index)).interpolate().loc[date_range]
+    end = date_range[-1]  # gets the right end.
+    new_index = date_range.union(data.index).tz_convert(date_range.tzinfo)
+    data_with_index = data.reindex(new_index)
+    if method == "interpolate":
+        data = data_with_index.interpolate()
+    elif method in ["pad", "ffill", "bfill", 'backfill']:
+        data = data_with_index.fillna(method=method)
+    else:
+        raise Exception("Incorrect method for filling nan values given.")
+    data = data.loc[start: end]
+    data = data.iloc[:-1]  # Because we return data not inclusive. So end datapoint does not matter.
 
+    def weighted_average(df, interval):
+        """Takes time weighted average of data frame. Each datapoint is weighted from its start time to the next
+        datapoints start time.
+        :param df: pd.df/pd.series. index includes the start of the interval and all data is between start and start + interval.
+        :param interval: float minutes.
+        :returns the value in the dataframe weighted by the time duration."""
+        df = df.sort_index()
+        temp_index = np.array(list(df.index) + [df.index[0] + datetime.timedelta(minutes=interval)])
+        diffs = temp_index[1:] - temp_index[:-1]
+        weights = np.array([d.total_seconds() for d in diffs]) / float(60 * interval)
+        assert 0.99 < sum(weights) < 1.01  # account for tiny precision errors.
+        if isinstance(df, pd.DataFrame):
+            return pd.DataFrame(index=[df.index[0]], columns=df.columns, data=[df.values.T.dot(weights)])
+        else:
+            return pd.Series(index=[df.index[0]], data=df.values.dot(weights))
 
-def get_outside_temperatures(building_config, start, end, data_manager, thermal_data_manager, interval=15):
-    """
-    Get outside weather from start to end. Will combine historic and weather predictions data when necessary.
-    :param start: datetime timezone aware
-    :param end: datetime timezone aware
-    :param interval: (int minutes) interval of the returned timeseries in minutes. 
-    :return: pd.Series with combined data of historic and prediction outside weather. 
-    """
-    # For finding out if start or/and end are before or after the current time.
-    utc_now = get_utc_now()
+    # take weighted average and groupby datapoints which are in the same interval.
+    data_grouped = data.groupby(by=lambda x: (x - start).total_seconds() // (60 * interval)).apply(
+        lambda x: weighted_average(x, interval))
 
-    # Set start and end to correct timezones
-    cfg_timezone = get_config_timezone(building_config)
-    start_utc = start.astimezone(tz=pytz.utc)
-    end_utc = end.astimezone(tz=pytz.utc)
-    start_cfg_timezone = start.astimezone(tz=cfg_timezone)
-    end_cfg_timezone = end.astimezone(tz=cfg_timezone)
-    now_cfg_timezone = utc_now.astimezone(tz=cfg_timezone)
-
-    # Getting temperatures.
-    # Note, adding interval minute intervals to ensure that we get at least 1 interval from historic/future
-
-    # Populating the outside_temperatures pd.Series for MPC use. Ouput is in cfg timezone.
-    outside_temperatures = pd.Series(index=pd.date_range(start_cfg_timezone, end_cfg_timezone, freq=str(interval)+"T"))
-    if now_cfg_timezone < end_cfg_timezone - datetime.timedelta(minutes=interval):
-        # Get future weather starting at either now time or start time. Start time only if it is in the future.
-        future_weather = data_manager.weather_fetch(start=max(now_cfg_timezone, start_cfg_timezone), end=end_cfg_timezone, interval=interval)
-        outside_temperatures[max(now_cfg_timezone, start_cfg_timezone):end_cfg_timezone] = future_weather.values
-
-    # Combining historic data with outside_temperatures correctly if exists.
-    if now_cfg_timezone > start_cfg_timezone + datetime.timedelta(minutes=interval):
-        historic_weather = thermal_data_manager.get_outside_data(start_utc,
-                                                                  min(end_utc, utc_now), inclusive=True)
-        historic_weather = thermal_data_manager.preprocess_outside_data(historic_weather.values()).squeeze()
-
-
-        # Convert historic_weather to cfg timezone.
-        historic_weather.index = historic_weather.index.tz_convert(tz=building_config["Pytz_Timezone"])
-
-        # Make sure historic weather has correct interval and start to end times.
-        historic_weather = interpolate_to_start_end_range(historic_weather,
-                                                          start_cfg_timezone, min(end_cfg_timezone, now_cfg_timezone),
-                                                          interval)
-
-        # Populate outside data
-        outside_temperatures[start_cfg_timezone:min(end_cfg_timezone, now_cfg_timezone)] = historic_weather.values
-
-    return outside_temperatures
+    # since groupby creates a multiindex.
+    return data_grouped.reset_index(level=0, drop=True)
 
 
 def get_zones(building):
@@ -843,7 +715,6 @@ def get_data_matrix(building, zones, start, end, interval, data_type, datamanage
     start_cfg_timezone = start_utc.astimezone(tz=pytz.timezone(building_cfg["Pytz_Timezone"]))
     end_cfg_timezone = end_utc.astimezone(tz=pytz.timezone(building_cfg["Pytz_Timezone"]))
 
-
     all_zone_data = {}
 
     # gather and process data
@@ -880,7 +751,7 @@ def get_data_matrix(building, zones, start, end, interval, data_type, datamanage
         # https://stackoverflow.com/questions/33575758/resampling-in-pandas?rq=1
         offset_microsecond = (start_cfg_timezone - start_cfg_timezone.replace(minute=0, second=0,
                                                                               microsecond=0)).total_seconds() % (
-                             interval * 60)
+                                     interval * 60)
         offset_minute = offset_microsecond / (60.)
         reduced_zone_data = reduced_zone_data.resample(str(interval) + "T", base=offset_minute).mean()
 
@@ -894,7 +765,7 @@ def get_data_matrix(building, zones, start, end, interval, data_type, datamanage
         # setting index which has correct microseconds. Issue is that pandas uses the offset given and adds
         # a seemingly arbitrary microsecond precision. Hence, the start will not be in the index because it is off
         # by a fraction of a millisecond. This will ensure that the timeseries starts and ends exactly at start and end.
-        reduced_zone_data.index = pd.date_range(start_cfg_timezone, end_cfg_timezone, freq=str(interval)+"T")
+        reduced_zone_data.index = pd.date_range(start_cfg_timezone, end_cfg_timezone, freq=str(interval) + "T")
 
         # set the data
         all_zone_data[iter_zone] = reduced_zone_data
@@ -1005,7 +876,6 @@ def safety_check(cfg_zone, temperature_zone, safety_constraint_zone, cooling_set
     :return: {heating_setpoint: float, cooling_setpoint_float}. None if safety constraints and comfortband could not be
                 set correctly while keeping the action the setpoints were set to take.
     """
-
 
     # check if setpoints are set to cool, heat, or do nothing
     is_set_cooling = cooling_setpoint < temperature_zone - cfg_zone["Advise"]["Hysterisis"]
@@ -1309,7 +1179,6 @@ if __name__ == "__main__":
     # b_dict = {"b": True, 'a': True}
     # print(and_dictionary(a_dict, b_dict))
 
-
     BUILDING = "ciee"
     ZONES = get_zones(BUILDING)
     ZONE = ZONES[0]
@@ -1333,33 +1202,11 @@ if __name__ == "__main__":
     start_simulation = cfg_timezone.localize(start_simulation)
     end_simulation = cfg_timezone.localize(end_simulation)
 
-
-
     data_manager = DataManager.DataManager(building_config, zone_config, get_client(), ZONE,
-                 now=None)
+                                           now=None)
 
     thermal_data_manager = ThermalDataManager.ThermalDataManager(building_config, get_client(), interval=5)
 
-    print(get_outside_temperatures(building_config, start_simulation, end_simulation, data_manager, thermal_data_manager, 15))
-    # print(safety_check(zone_config, curr_temp, safety, cooling_setpoint, heating_setpoint))
-
-    # start = get_utc_now() + datetime.timedelta(hours=1)
-    # end = start + datetime.timedelta(hours=7)
-
-    # # client = choose_client()
-    # client = None
-
-    # data_manager = DataManager.DataManager(building_config, zone_config, client, ZONE,
-    #              now=None)
-    #
-    # thermal_data_manager = ThermalDataManager.ThermalDataManager(building_config, client, interval=5)
-    #
-    # print(get_outside_temperatures(building_config, start, end, data_manager, thermal_data_manager))
-    #
-    # datamanager_zones = get_zone_data_managers(BUILDING, ZONES, start, client)
-    #
-    # import time
-    #
-    # s_time = time.time()
-    # print(get_is_dr_matrix(BUILDING, ZONES, start, end, 15, datamanager_zones=datamanager_zones))
-    # print(time.time() - s_time)
+    print(
+        get_outside_temperatures(building_config, start_simulation, end_simulation, data_manager, thermal_data_manager,
+                                 15))
