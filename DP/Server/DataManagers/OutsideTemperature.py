@@ -34,7 +34,7 @@ def weather_fetch(building, start, end, interval, fetch_attempts=10):
 
 
     now = utils.get_utc_now()
-    now_cfg_timezone = now.astimezone(tz=pytz_tz)
+    now = now.astimezone(tz=pytz_tz)
 
     start_cfg_tz = start.astimezone(tz=pytz_tz)
     end_cfg_tz = end.astimezone(tz=pytz_tz)
@@ -50,7 +50,7 @@ def weather_fetch(building, start, end, interval, fetch_attempts=10):
             # Checking if the start and end times are in the data range and also ensuring that our data is not more
             # than a day old.
             if weather_data.index[0] <= start_cfg_tz <= end_cfg_tz <= weather_data.index[-1] \
-                    and weather_data.index[0] <= now_cfg_timezone + datetime.timedelta(days=1):
+                    and weather_data.index[0] <= now + datetime.timedelta(days=1):
                 return utils.smart_resample(weather_data, start_cfg_tz, end_cfg_tz, interval, method="interpolate")
         except:
             os.remove(file_name)
@@ -156,7 +156,7 @@ def _get_mdal_outside_data(building, start, end):
                    'Aligned': True}}
 
     mdal_outside_data = utils.get_mdal_data(mdal_client, mdal_query)
-    return mdal_outside_data
+    return mdal_outside_data.tz_convert(utils.get_config(building)["Pytz_Timezone"])
 
 
 def get_historic_outside_data(building, start, end, interval):
@@ -175,44 +175,26 @@ def get_outside_temperatures(building, start, end, interval=15):
     :return: pd.Series with combined data of historic and prediction outside weather.
     """
     # For finding out if start or/and end are before or after the current time.
-    utc_now = utils.get_utc_now()
-
-    cfg_building = utils.get_config(building)
-
-    # Set start and end to correct timezones
-    cfg_timezone = utils.get_config_timezone(cfg_building)
-    start_utc = start.astimezone(tz=pytz.utc)
-    end_utc = end.astimezone(tz=pytz.utc)
-    start_cfg_timezone = start.astimezone(tz=cfg_timezone)
-    end_cfg_timezone = end.astimezone(tz=cfg_timezone)
-    now_cfg_timezone = utc_now.astimezone(tz=cfg_timezone)
+    now = utils.get_utc_now()
 
     # Getting temperatures.
     # Note, adding interval minute intervals to ensure that we get at least 1 interval from historic/future
 
     # Populating the outside_temperatures pd.Series for MPC use. Ouput is in cfg timezone.
-    outside_temperatures = pd.Series(index=pd.date_range(start_cfg_timezone, end_cfg_timezone, freq=str(interval)+"T"))
-    if now_cfg_timezone < end_cfg_timezone - datetime.timedelta(minutes=interval):
+    outside_temperatures = pd.Series(index=pd.date_range(start, end, freq=str(interval)+"T"))
+    if now < end - datetime.timedelta(minutes=interval):
         # Get future weather starting at either now time or start time. Start time only if it is in the future.
-        future_weather = weather_fetch(start=max(now_cfg_timezone, start_cfg_timezone), end=end_cfg_timezone, interval=interval)
-        outside_temperatures[max(now_cfg_timezone, start_cfg_timezone):end_cfg_timezone] = future_weather.values
+        future_weather = weather_fetch(building, start=max(now, start), end=end, interval=interval)
+        outside_temperatures[max(now, start):end] = future_weather.values
 
     # Combining historic data with outside_temperatures correctly if exists.
-    if now_cfg_timezone > start_cfg_timezone + datetime.timedelta(minutes=interval):
-        historic_weather = get_historic_outside_data(start_utc, min(end_utc, utc_now))
-
-        # Convert historic_weather to cfg timezone.
-        historic_weather.index = historic_weather.index.tz_convert(tz=cfg_building["Pytz_Timezone"])
-
-        # Make sure historic weather has correct interval and start to end times.
-        historic_weather = utils.smart_resample(historic_weather,
-                                                          start_cfg_timezone, min(end_cfg_timezone, now_cfg_timezone),
-                                                          interval)
+    if now > start + datetime.timedelta(minutes=interval):
+        historic_weather = get_historic_outside_data(building, start, min(end, now), interval=interval)
 
         # Populate outside data
-        outside_temperatures[start_cfg_timezone:min(end_cfg_timezone, now_cfg_timezone)] = historic_weather.values
+        outside_temperatures[start:min(end, now)] = historic_weather.values
 
-    return outside_temperatures
+    return utils.smart_resample(outside_temperatures, start, end, interval)
 
 if __name__ == "__main__":
     building = "ciee"
@@ -224,4 +206,4 @@ if __name__ == "__main__":
 
     print("start", start)
     print("end", end)
-    print(get_historic_outside_data(building, start, end, 15))
+    print(get_outside_temperatures(building, start, end, 15))
