@@ -476,20 +476,31 @@ def smart_resample(data, start, end, interval, method="pad"):
                 But the new end will not be inclusive.
           - If end is beyond the end of the data, it will assume that the last value has been constant until the
               given end.
-          - All datetime object should have the same timezone.
-          - TODO Evaluate with different timezones.
+          - TODO Evaluate with different timezones. - All datetime object should have the same timezone.
     """
+
+
+    try:
+        end = end.astimezone(start.tzinfo)
+        data = data.tz_convert(start.tzinfo)
+    except:
+        raise Exception("Start, End, Data need to be timezone aware.")
+
+
     # make sure that the start and end dates are valid.
     data = data.sort_index()
     assert start <= end
     assert start >= data.index[0]
-    if end - datetime.timedelta(minutes=interval) > data.index[-1]:
-        print("Warning: the given end is more than one interval after the last datapoint in the given data. %s minutes after end of data."
-              % str((end - data.index[-1]).total_seconds()/60.))
 
     # add date_range and fill nan's through the given method.
     date_range = pd.date_range(start, end, freq=str(interval) + "T")
     end = date_range[-1]  # gets the right end.
+
+    # Raise warning if we don't have enough data.
+    if end - datetime.timedelta(minutes=interval) > data.index[-1]:
+        print("Warning: the given end is more than one interval after the last datapoint in the given data. %s minutes after end of data."
+              % str((end - data.index[-1]).total_seconds()/60.))
+
     new_index = date_range.union(data.index).tz_convert(date_range.tzinfo)
     data_with_index = data.reindex(new_index)
     if method == "interpolate":
@@ -498,6 +509,7 @@ def smart_resample(data, start, end, interval, method="pad"):
         data = data_with_index.fillna(method=method)
     else:
         raise Exception("Incorrect method for filling nan values given.")
+
     data = data.loc[start: end]
     data = data.iloc[:-1]  # Because we return data not inclusive. So end datapoint does not matter.
 
@@ -518,11 +530,10 @@ def smart_resample(data, start, end, interval, method="pad"):
             return pd.Series(index=[df.index[0]], data=df.values.dot(weights))
 
     # take weighted average and groupby datapoints which are in the same interval.
-    data_grouped = data.groupby(by=lambda x: (x - start).total_seconds() // (60 * interval)).apply(
-        lambda x: weighted_average(x, interval))
+    data_grouped = data.groupby(by=lambda x: (x - start).total_seconds() // (60 * interval), group_keys=False).apply(func=lambda x: weighted_average(x, interval))
 
-    # since groupby creates a multiindex.
-    return data_grouped.reset_index(level=0, drop=True)
+    return data_grouped
+
 
 
 def get_zones(building):
@@ -780,7 +791,7 @@ def has_setpoint_changed(tstat, setpoint_data, zone):
     """
     Checks if thermostats was manually changed and prints warning.
     :param tstat: Tstat object we want to look at.
-    :param setpoint_data: dict which has keys {"heating_setpoint": bool, "cooling_setpoint": bool} and corresponds to
+    :param setpoint_data: dict which has keys {"heating_setpoint": int, "cooling_setpoint": int} and corresponds to
             the setpoint written to the thermostat by MPC.
     :param zone: Name of the zone to print correct messages.
     :return: Bool. Whether tstat setpoints are equal to setpoints written to tstat.

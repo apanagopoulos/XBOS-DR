@@ -3,6 +3,7 @@ import sys
 import threading
 import time
 from collections import defaultdict
+import pandas as pd
 
 import pytz
 
@@ -20,6 +21,8 @@ from MPCThermalModel import MPCThermalModel
 
 sys.path.insert(0, '../Utils')
 sys.path.append("./Lights")
+sys.path.append("./DataManagers")
+import Setpoints
 import MPCLogger
 
 from ThermalCollectorOptimizer import Schedule_Optimizer
@@ -76,9 +79,11 @@ def hvac_control(cfg_building, cfg_zones, tstats, thermal_model, zones, building
     # TODO FIX The TIME in utils. it returns data which has second and microsecond set to zero.
     # start_with_striped = start.replace(microsecond=0, second=0)
     # end_with_striped = end.replace(microsecond=0, second=0)
-    safety_constraints_zones = utils.get_safety_matrix(building, zones, start, end, INTERVAL,
-                                                       datamanager_zones=utils.get_zone_data_managers(building, zones,
-                                                                                                      start, client))
+    # safety_constraints_zones = utils.get_safety_matrix(building, zones, start, end, INTERVAL,
+    #                                                    datamanager_zones=utils.get_zone_data_managers(building, zones,
+    #                                                                                                   start, client))
+    safety_constraints_zones = {iter_zone: Setpoints.get_safety(building, iter_zone, start, end, INTERVAL) for # TODO change the hardcoded 15.
+                               iter_zone in zones}
 
     # Initialize dictionary which keeps track of the success of writing and finding setpoints for the given zone.
     succeeded_zones = {}
@@ -161,7 +166,7 @@ class ZoneThread(threading.Thread):
     def __init__(self, tstats, zones, client, thermal_models, building, barrier, mutex, consumption_storage,
                  normal_schedule,
                  optimization_type, dp_optimizer=None, lp_optimizer=None, debug=False,
-                 simulate=False, simulate_start=None, simulate_end=None):
+                 simulate=False, simulate_start=None, simulate_end=None, actuation_times=None):
         """
         
         :param tstats: 
@@ -203,6 +208,8 @@ class ZoneThread(threading.Thread):
                                                            "cooling_setpoint": {},
                                                            "state": {},
                                                            "noise": {}})
+
+        self.actuation_times = actuation_times
 
         # setting consumption storage
         self.consumption_storage = consumption_storage
@@ -274,8 +281,12 @@ class ZoneThread(threading.Thread):
                     end_cfg_timezone = self.simulate_end_utc.astimezone(tz=timezone_cfg)
                 else:
                     # For now we will leave the config file start and end times for the current day we are running
-                    start_cfg_string = cfg_zone["Advise"]["Actuate_Start"]
-                    end_cfg_string = cfg_zone["Advise"]["Actuate_End"]
+                    if self.actuation_times is not None:
+                        start_cfg_string = self.actuation_times[iter_zone][0]
+                        end_cfg_string = self.actuation_times[iter_zone][1]
+                    else:
+                        start_cfg_string = cfg_zone["Advise"]["Actuate_Start"]
+                        end_cfg_string = cfg_zone["Advise"]["Actuate_End"]
                     start_cfg_timezone = utils.combine_date_time(start_cfg_string, now_cfg_timezone)
                     end_cfg_timezone = utils.combine_date_time(end_cfg_string, now_cfg_timezone)
 
@@ -297,7 +308,7 @@ class ZoneThread(threading.Thread):
             actuate_zones = {iter_zone: (start_end[0] <= now_cfg_timezone <= start_end[1])
                                         and (not self.simulate)
                                         and not stop_program_zone[iter_zone]
-                                        and not debug
+                                        # and not debug
                              for iter_zone, start_end in actuation_start_end_cfg_tz.items()}
 
             # set variable to store message data for each zone. i.e. The message we would like to send or sent to tstat.
@@ -517,7 +528,7 @@ class ZoneThread(threading.Thread):
             # Checking if manual setpoint changes occurred given that we successfully actuated that zone.
             for iter_zone, actuate_zone in actuate_zones.items():
                 if actuate_zone and succeeded_zones[iter_zone]:
-                    action_data_zone = action_data_zones[iter_zone]
+                    action_data_zone = message_data_zones[iter_zone]
                     # end program if setpoints have been changed. (If not writing to tstat we don't want this)
                     if action_data_zone is not None and utils.has_setpoint_changed(self.tstats[iter_zone],
                                                                                    action_data_zone,
@@ -550,7 +561,7 @@ class ZoneThread(threading.Thread):
         self.mutex.release()
 
 
-def main(building, optimization_type, simulate=False, debug=True, run_server=True, start_simulation=None, end_simulation=None):
+def main(building, optimization_type, simulate=False, debug=True, start_simulation=None, end_simulation=None, actuation_times=None):
     """
     Intializes the control functions and starts them.
     :param building: (string) Building name 
@@ -592,18 +603,23 @@ def main(building, optimization_type, simulate=False, debug=True, run_server=Tru
     tstats_building = utils.get_thermostats(client, hod_client, cfg_building["Building"])
 
     # --- Thermal Model Init ------------
-    # initialize and fit thermal model
-    thermal_data = utils.get_data(cfg=cfg_building, client=client, days_back=150, force_reload=False)
+    # # initialize and fit thermal model
+    # thermal_data = utils.get_data(cfg=cfg_building, client=client, days_back=150, force_reload=False)
+    #
+    # zone_thermal_models = {}
+    # for iter_zone, zone_data in thermal_data.items():
+    #     # Concat zone data to put all data together and filter such that all datapoints have dt == 5
+    #     filtered_zone_data = zone_data[zone_data["dt"] == 5]
+    #     if iter_zone != "HVAC_Zone_Please_Delete_Me":
+    #         zone_thermal_models[iter_zone] = MPCThermalModel(interval_thermal=5, zone=iter_zone, thermal_data=filtered_zone_data,
+    #                                                     interval_length=15, thermal_precision=0.05)
+    # if debug:
+    #     print("Trained Thermal Model")
 
     zone_thermal_models = {}
-    for iter_zone, zone_data in thermal_data.items():
-        # Concat zone data to put all data together and filter such that all datapoints have dt == 5
-        filtered_zone_data = zone_data[zone_data["dt"] == 5]
-        if iter_zone != "HVAC_Zone_Please_Delete_Me":
-            zone_thermal_models[iter_zone] = MPCThermalModel(interval_thermal=5, zone=iter_zone, thermal_data=filtered_zone_data,
-                                                        interval_length=15, thermal_precision=0.05)
-    if debug:
-        print("Trained Thermal Model")
+    for iter_zone in zones:
+        zone_thermal_models[iter_zone] = None
+
     # --------------------------------------
 
     # setting the thermostats to be used for control.
@@ -626,6 +642,15 @@ def main(building, optimization_type, simulate=False, debug=True, run_server=Tru
     dp_optimizer = IteratedDP(building, client, len(tstats_control.keys()), num_iterations=1)
     lp_optimizer = AdviseLinearProgram(building, client, num_threads=1, debug=False)
     now_utc = utils.get_utc_now()
+
+    try:
+        opt_schedule = pd.read_csv(building + "_schedule")
+    except:
+        opt_schedule = create_schedule(start=now_utc, end=now_utc + datetime.timedelta(hours=24),
+                                                            building=building, zones=zones)
+        opt_schedule.to_csv(building + "_schedule")
+
+
     normal_schedule = Schedule_Optimizer(building, client, schedule=create_schedule(start=now_utc,
                                                                                     end=now_utc + datetime.timedelta(hours=10),
                                                                                     building=building, zones=zones))
@@ -650,7 +675,7 @@ def main(building, optimization_type, simulate=False, debug=True, run_server=Tru
                                     optimization_type=optimization_type, dp_optimizer=dp_optimizer,
                                     lp_optimizer=lp_optimizer,
                                     debug=debug, simulate=simulate,
-                                    simulate_start=start_simulation, simulate_end=end_simulation)
+                                    simulate_start=start_simulation, simulate_end=end_simulation, actuation_times=actuation_times)
                 thread.start()
                 threads.append(thread)
     elif optimization_type == "LP" or optimization_type == "Schedule":
@@ -665,7 +690,7 @@ def main(building, optimization_type, simulate=False, debug=True, run_server=Tru
                             optimization_type=optimization_type, dp_optimizer=dp_optimizer,
                             lp_optimizer=lp_optimizer,
                             debug=debug, simulate=simulate,
-                            simulate_start=start_simulation, simulate_end=end_simulation)
+                            simulate_start=start_simulation, simulate_end=end_simulation, actuation_times=actuation_times)
         thread.start()
         threads.append(thread)
     else:
@@ -799,8 +824,8 @@ if __name__ == '__main__':
 
 
     # DEBUG PURPOSES
-    building = "jesse-turner-center"
-    optimization_type = "LP"
+    building = "berkeley-corporate-yard"
+    optimization_type = "Schedule"
     simulate = False
     debug = True
     run_server = False
@@ -812,7 +837,9 @@ if __name__ == '__main__':
     start_simulation = cfg_timezone.localize(start_simulation)
     end_simulation = cfg_timezone.localize(end_simulation)
 
-    result = main(building, optimization_type, simulate, debug, run_server, start_simulation, end_simulation)
+    actuation_times = {iter_zone: ["14:00", "23:00"] for iter_zone in utils.get_zones(building)}
+
+    result = main(building, optimization_type, simulate, debug, start_simulation, end_simulation, actuation_times=actuation_times)
 
 
 

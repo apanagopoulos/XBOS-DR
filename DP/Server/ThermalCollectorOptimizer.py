@@ -3,7 +3,7 @@ import utils
 import itertools
 import datetime
 import pytz
-
+import os
 
 def create_schedule(start, end, building, zones, interval=15):
     """
@@ -25,11 +25,15 @@ def create_schedule(start, end, building, zones, interval=15):
     # we set up 15 min for every type of action for each zone.
     for iter_zone in zones:
         for a in actions:
+            if "CS" in iter_zone and a == 1:
+                continue
             schedule.iloc[curr_timestep][iter_zone] = a
             curr_timestep += 1
 
     for zone1, zone2 in itertools.combinations(zones, r=2):
         for a1, a2 in itertools.product(actions, actions):
+            if start + datetime.timedelta(minutes=interval)*curr_timestep >= end:
+                break
             schedule.iloc[curr_timestep][zone1] = a1
             schedule.iloc[curr_timestep][zone2] = a2
             curr_timestep += 1
@@ -63,10 +67,9 @@ class Schedule_Optimizer:
 
         self.schedule.index = self.schedule.index.tz_convert(cfg_building["Pytz_Timezone"])
 
-        print(self.schedule)
 
 
-        return self.schedule.loc[start].to_dict(), None
+        return self.schedule.iloc[self.schedule.index.get_loc(start_cfg_timezone, method='nearest')].to_dict(), None
 
 
 

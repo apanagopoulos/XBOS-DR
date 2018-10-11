@@ -113,7 +113,7 @@ def get_day_safety(building, zone, date, interval=1):
 
         # sanity check that we don't have any timeperiods where no setpoints are given
         if last_end is not None and start != last_end:
-            raise Exception("Data was given where for some time period no setpoints were given.")
+            raise Exception("Data was given where for some time period no setpoints were given for zone %s. The expected start: %s vs actual start: %s" % (zone, utils.get_datetime_to_string(last_end), utils.get_datetime_to_string(start)))
         last_end = utils.combine_date_time(end, date)
 
         # if we are going into the next day.

@@ -17,7 +17,6 @@ from xbos.services.hod import HodClient
 # TODO FIX DAYLIGHT TIME CHANGE PROBLEMS
 
 
-
 def get_inside_data(self, start, end):
     """Get thermostat status and temperature and outside temperature for thermal model.
     :param start: (datetime) time to start. in UTC time.
@@ -37,20 +36,7 @@ def get_inside_data(self, start, end):
           ?tstat bf:hasPoint ?status_point .
           ?status_point rdf:type brick:Thermostat_Status .
           ?status_point bf:uuid ?uuid.
-        };"""
-
-    # Start of FIX for missing Brick query
-    thermostat_status_query = """SELECT ?zone ?uuid FROM  %s WHERE {
-                             ?tstat rdf:type brick:Thermostat .
-                             ?tstat bf:controls ?RTU .
-                             ?RTU rdf:type brick:RTU .
-                             ?RTU bf:feeds ?zone. 
-                             ?zone rdf:type brick:HVAC_Zone .
-                             ?tstat bf:hasPoint ?status_point .
-                              ?status_point rdf:type brick:Thermostat_Status .
-                              ?status_point bf:uuid ?uuid.
-                             };"""
-    # End of FIX - delete when Brick is fixed
+        };""" % building
 
     thermostat_temperature_query = """SELECT ?zone ?uuid FROM %s WHERE { 
           ?tstat rdf:type brick:Thermostat .
@@ -63,20 +49,8 @@ def get_inside_data(self, start, end):
           ?tstat bf:hasPoint ?thermostat_point .
           ?thermostat_point rdf:type brick:Temperature_Sensor .
           ?thermostat_point bf:uuid ?uuid.
-        };"""
+        };""" % building
 
-    # Start of FIX for missing Brick query
-    thermostat_temperature_query = """SELECT ?zone ?uuid FROM  %s WHERE {
-                      ?tstat rdf:type brick:Thermostat .
-                      ?tstat bf:controls ?RTU .
-                      ?RTU rdf:type brick:RTU .
-                      ?RTU bf:feeds ?zone. 
-                      ?zone rdf:type brick:HVAC_Zone .
-                      ?tstat bf:hasPoint ?thermostat_point  .
-                      ?thermostat_point rdf:type brick:Temperature_Sensor .
-                      ?thermostat_point bf:uuid ?uuid.
-                      };"""
-    # End of FIX - delete when Brick is fixed
 
     # get query data
     temp_thermostat_query_data = {
