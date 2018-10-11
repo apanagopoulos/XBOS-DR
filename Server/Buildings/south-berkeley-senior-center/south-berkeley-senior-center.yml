@@ -1,0 +1,33 @@
+Agent_IP: 172.17.0.1:28589
+Building: south-berkeley-senior-center
+Coordinates: 37.85436,-122.2751013
+Entity_File: ./thanos.ent
+Interval_Length: 15
+Max_Actions: 400
+Pricing:
+  DR: true
+  DR_Finish: '18:00'
+  DR_Price: 0.86298
+  DR_Start: '14:00'
+  Energy_Rates: TOU-Summer
+  Holiday: false
+  NON-TOU-Summer:
+  - - ['00:00', '00:00', 0.2473]
+  - - ['00:00', '00:00', 0.2473]
+  NON-TOU-Winter:
+  - - ['00:00', '00:00', 0.1927]
+  - - ['00:00', '00:00', 0.1927]
+  TOU-Summer:
+  - - ['00:00', '08:30', 0.21197]
+    - ['08:30', '12:00', 0.23933]
+    - ['12:00', '18:00', 0.26298]
+    - ['18:00', '21:30', 0.23933]
+    - ['21:30', '00:00', 0.21197]
+  - - ['00:00', '00:00', 0.21197]
+  TOU-Winter:
+  - - ['00:00', '08:30', 0.19956]
+    - ['08:30', '21:30', 0.22047]
+    - ['21:30', '00:00', 0.19956]
+  - - ['00:00', '00:00', 0.19956]
+Pytz_Timezone: America/Los_Angeles
+Server: false
